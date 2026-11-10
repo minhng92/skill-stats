@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.jpg" alt="agentmemory: persistent memory for AI coding agents" width="720" />
+</p>
+
 # Skill Stats for Hermes Agent
 
 Skill Stats counts every skill load in Hermes Agent and turns the counts into
@@ -35,6 +39,12 @@ Two things to keep in mind:
    and run `hermes -p <profile> plugins enable skill-stats`.
 2. Hooks register when a session starts, so the command becomes available in
    a new session after enabling.
+
+<p align="center">
+  <a href="assets/skill-usage-chart.jpg">
+    <img src="assets/skill-usage-chart.jpg" alt="Skill usage chart" width="960" />
+  </a>
+</p>
 
 ## Use it in a chat session: /skill-stats
 
@@ -107,6 +117,12 @@ Every option has a short form: `--day/-d`, `--offset/-of`, `--limit/-l`,
 `--group/-g`, `--session/-s`, `--output/-o`.
 
 ## Use it on the Dashboard
+
+<p align="center">
+  <a href="assets/skill-usage-overall.jpg">
+    <img src="assets/skill-usage-overall.jpg" alt="Skill usage overall" width="960" />
+  </a>
+</p>
 
 The Skill Stats tab sits after Skills in the Hermes web Dashboard. All
 controls respond immediately:
