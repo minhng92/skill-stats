@@ -1,0 +1,20 @@
+name: skill-stats
+label: Skill Stats
+kind: standalone
+version: 1.4.2
+author: kyzlab
+homepage: https://github.com/NousResearch/hermes-official-plugins
+description: >
+  Per-skill usage counters for Hermes Agent: increments on every
+  skill_view load, with /skill-stats for this session and
+  `hermes skill-stats` for global totals.
+requires_hermes: ">=0.23.0"
+provides_hooks:
+  - pre_tool_call
+  - on_session_start
+  - on_session_end
+provides_commands:
+  - skill-stats
+provides_cli:
+  - skill-stats
+requires_env: []

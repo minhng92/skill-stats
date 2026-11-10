@@ -1,0 +1,13 @@
+{
+  "name": "skill-stats",
+  "label": "Skill Stats",
+  "description": "Per-skill usage counters with daily bar and cumulative line charts (global + per-session)",
+  "icon": "BarChart3",
+  "version": "1.4.2",
+  "tab": {
+    "path": "/skill-stats",
+    "position": "after:skills"
+  },
+  "entry": "dist/index.js",
+  "api": "plugin_api.py"
+}
