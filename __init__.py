@@ -22,8 +22,8 @@ def register(ctx) -> None:
     ctx.register_hook("on_session_end", skill_stats_hooks.on_session_end)
     ctx.register_command(
         "skill-stats", skill_stats_hooks.on_skill_stats,
-        description="This session's skill usage: /skill-stats [--json] · global: /skill-stats global · reset session: /skill-stats reset",
-        args_hint="[global] [--json]",
+        description="This session's skill usage: /skill-stats [--day N] [--offset N] [--limit N] [--group] · global: /skill-stats global · reset session: /skill-stats reset",
+        args_hint="[global] [--json] [--day N] [--offset N] [--limit N] [--group]",
     )
     ctx.register_cli_command(
         "skill-stats",

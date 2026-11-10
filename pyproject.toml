@@ -2,7 +2,7 @@
 # only), so this file is metadata for tooling/tests, not a build spec.
 [project]
 name = "hermes-skill-stats"
-version = "1.4.2"
+version = "0.9.0"
 description = "Per-skill usage counters for Hermes Agent (session + global stats)"
 readme = "README.md"
 license = { text = "MIT" }

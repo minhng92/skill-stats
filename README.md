@@ -41,53 +41,80 @@ system-prompt pointer defers to the next session.
 
 ## Usage
 
+All statistics views are **period-scoped** (default: last 1 day) with
+`--offset/--limit` paging and an optional group-by-category mode.
+
 | Surface | Command | What it shows / does |
 |---|---|---|
-| In-session | `/skill-stats` | **This session's** table + top-skill 14d bar/cumulative charts |
-| In-session | `/skill-stats global` | Global (all-time) table + charts |
+| In-session | `/skill-stats` | **This session's** bordered table (skill, category, loads, %, last used) + top-skill bar/line charts |
+| In-session | `/skill-stats --day 7` | Same, for the last 7 days |
+| In-session | `/skill-stats global --offset 10 --limit 10` | Global stats, page 2 |
+| In-session | `/skill-stats --group` | Grouped by skill category (loads, %, latest last-used) |
 | In-session | `/skill-stats --json` | Table data + `series` per skill, machine-readable |
 | In-session | `/skill-stats reset` | Reset **this session's** stats |
-| TUI (`hermes --tui`) | `/skill-stats` | **Interactive modal**: ↑/↓ select skill, Enter opens chart, ←/→ toggles bar (daily) ↔ line (cumulative), Esc back/close |
-| CLI | `hermes skill-stats` | **Global** table (bare call) |
-| CLI | `hermes skill-stats --json` | Global + `series`, machine-readable |
+| TUI (`hermes --tui`) | `/skill-stats` | **Interactive modal** for the **current session**: ↑/↓ select skill, Enter opens chart, ←/→ toggles bar ↔ line, keys 1-7 switch period (1d 3d 7d 30d 60d 90d), Esc back/close |
+| CLI | `hermes skill-stats` | **Global** table (bare call), period-scoped |
+| CLI | `hermes skill-stats --day 30 -d 7 --offset 0 --limit 20 --group` | Period, paging, group-by-category |
+| CLI | `hermes skill-stats --json` | Table data + `series`, machine-readable |
 | CLI | `hermes skill-stats reset` | Reset **global** stats (+ all session files) |
 | CLI | `hermes skill-stats doctor` | Plugin health check |
-| Dashboard | `Skill Stats` tab (after Skills) | Table with per-skill counter + 📊 Chart button; chart view has ◀ Bar / Line ▶ toggle buttons and 7/30/90-day ranges |
+| Dashboard | `Skill Stats` tab (after Skills) | Table with Skill / Category / Loads / % / Last used / Chart / Pin columns; ← → paging, per-page dropdown (10-100), 1d-90d period buttons, group-by-category switcher, ★ pin/unpin (pinned skills stay on top) |
 
-`hermes skill-stats stats [--scope session --session <ID>]` also works as an explicit alias.
+`hermes skill-stats stats [--scope session --session <ID>]` also works as an
+explicit alias. Periods of 1 or 3 days render chart x-axes **hourly**; longer
+periods are daily (TUI + Dashboard).
 
 Note: in the TUI, the `/skill-stats` widget (interactive modal) takes
 precedence over the plugin's text `/skill-stats`; everywhere else the plugin
-command applies. The widget reads `$HERMES_HOME/skill-stats/global.json`
-directly — no backend needed.
+command applies. The widget reads the **newest session file** under
+`$HERMES_HOME/skill-stats/sessions/` (fallback: `global.json`) directly — no
+backend needed.
 
 ## Data
 
 ```
 $HERMES_HOME/skill-stats/global.json
 $HERMES_HOME/skill-stats/sessions/<session_id>.json
+$HERMES_HOME/skill-stats/pins.json          # dashboard pin list
 ```
 
-Each file: `{"skills": {"<name>": {"loads": N, "last_used": <epoch>, "events": [<epoch>, ...]}}, "total_loads": N, "updated_at": <epoch>}`.
-Override the data dir with `SKILL_STATS_DIR=/absolute/path` (legacy `SKILL_ANALYTICS_DIR` still honored).
-Pre-v1.2 counters have no events until new loads happen — charts show
-recorded events only, never fabricated history.
+Each stats file: `{"skills": {"<name>": {"loads": N, "last_used": <epoch>, "events": [<epoch>, ...]}}, "total_loads": N, "updated_at": <epoch>}`.
+Override the data dir with `SKILL_STATS_DIR=/absolute/path` (legacy
+`SKILL_ANALYTICS_DIR` still honored). Charts show recorded events only, never
+fabricated history.
 
-## Stats output (v1.4.2)
+**Categories** come from the profile's skills directory layout:
+`<skills>/<category>/<skill>/SKILL.md` → the skill belongs to `<category>`;
+top-level `<skills>/<skill>/SKILL.md` → no category (blank). Plugin-provided
+skills (namespaced names) have no category folder and show blank.
 
-Terminal / slash / CLI all render the same table:
+**Percentage** is the skill's share of loads within the selected period.
+
+**Pins** (`pins.json`) order the Dashboard table: pinned skills stay on top
+(sorted by loads among themselves) for easy monitoring.
+
+## Stats output (0.9.0)
+
+Terminal / slash / CLI all render the same bordered table (headers bolded on
+a real TTY):
 
 ```
-skill-stats — global
-total loads: 18 · unique skills: 6 · last stats: 2026-11-10 15:27
-skill                                    loads  last_used
-hermes-agent                                 5  2026-11-10 01:48
-stageshow                                    5  2026-11-10 09:16
-...
+skill-stats — global · period: 1d
+total loads (1d): 4 · unique skills: 3
++---------------+---------------------+-------+--------+------------------+
+| SKILL         | CATEGORY            | LOADS | PCT    | LAST USED        |
++---------------+---------------------+-------+--------+------------------+
+| hermes-agent  | autonomous-ai-agents|     2 | 50.00% | 2026-11-10 16:59 |
+| ub-mode       | software-development|     1 | 25.00% | 2026-11-10 16:49 |
+| superpowers:x |                     |     1 | 25.00% | 2026-11-10 16:40 |
++---------------+---------------------+-------+--------+------------------+
 ```
 
-- `loads` — cumulative per-skill load counter.
-- Header: `total loads: <sum> · unique skills: <distinct> · last stats: <YYYY-MM-DD> <HH:MM>`.
+- `LOADS` — loads within the selected period (`--day`, default 1; `0` = all time).
+- `PCT` — share of the period's total loads.
+- `CATEGORY` — blank when the skill has no category folder.
+- `--group` replaces the skill rows with per-category rows (loads, %, latest
+  last-used). `--offset/--limit` page the rows (default `0`/`10`).
 
 ## What counts as a "use"
 

@@ -35,7 +35,14 @@ logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
 
+VERSION = "0.9.0"
+
 MAX_EVENTS_PER_SKILL = 1000
+
+#: Period options (in days) offered by every surface. Index + 1 = shortcut key.
+PERIOD_OPTIONS = (1, 3, 7, 30, 60, 90)
+DEFAULT_DAYS = 1
+DEFAULT_LIMIT = 10
 
 
 def _hermes_home() -> Path:
@@ -63,8 +70,81 @@ def _session_path(session_id: str, data_dir: Optional[Path] = None) -> Path:
     return (data_dir or _data_dir()) / "sessions" / f"{safe}.json"
 
 
+def _pins_path(data_dir: Optional[Path] = None) -> Path:
+    return (data_dir or _data_dir()) / "pins.json"
+
+
 def _empty_stats() -> dict[str, Any]:
     return {"skills": {}, "total_loads": 0, "updated_at": 0}
+
+
+def skill_categories(home: Optional[Path] = None) -> dict[str, str]:
+    """Map skill name -> category from the profile's skills directory.
+
+    Layout: ``<skills>/<category>/<skill>/SKILL.md`` → the skill's category is
+    ``<category>``; ``<skills>/<skill>/SKILL.md`` → category "" (no category
+    folder). Hidden directories (dot-prefixed, e.g. ``.archive``) are ignored.
+    Skills with no folder (plugin-provided, namespaced names) resolve to "".
+    """
+    base = (home or _hermes_home()) / "skills"
+    out: dict[str, str] = {}
+    try:
+        for entry in base.iterdir():
+            if not entry.is_dir() or entry.name.startswith("."):
+                continue
+            if (entry / "SKILL.md").is_file():
+                out[entry.name] = ""
+                continue
+            for sub in entry.iterdir():
+                if sub.is_dir() and not sub.name.startswith(".") and (sub / "SKILL.md").is_file():
+                    out[sub.name] = entry.name
+    except OSError as e:
+        logger.debug("skill-stats: cannot scan skills dir %s: %s", base, e)
+    return out
+
+
+def get_pins(data_dir: Optional[Path] = None) -> list[str]:
+    """Pinned skill names (dashboard monitoring), in pin order."""
+    try:
+        doc = json.loads(_pins_path(data_dir).read_text(encoding="utf-8"))
+        if isinstance(doc, dict):
+            return [str(s) for s in doc.get("pins", []) if isinstance(s, str)]
+        if isinstance(doc, list):
+            return [str(s) for s in doc if isinstance(s, str)]
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        logger.debug("skill-stats: failed to read pins: %s", e)
+    return []
+
+
+def set_pins(pins: list[str], data_dir: Optional[Path] = None) -> list[str]:
+    """Replace the pin list (order-preserving, de-duplicated)."""
+    clean: list[str] = []
+    for p in pins or []:
+        if isinstance(p, str) and p.strip() and p not in clean:
+            clean.append(p.strip())
+    path = _pins_path(data_dir)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(json.dumps({"pins": clean}, indent=2), encoding="utf-8")
+        tmp.replace(path)
+    except Exception as e:
+        logger.debug("skill-stats: failed to write pins: %s", e)
+    return clean
+
+
+def toggle_pin(skill_name: str, data_dir: Optional[Path] = None) -> list[str]:
+    """Pin an unpinned skill / unpin a pinned one; returns the new pin list."""
+    if not skill_name:
+        return get_pins(data_dir)
+    pins = get_pins(data_dir)
+    if skill_name in pins:
+        pins.remove(skill_name)
+    else:
+        pins.append(skill_name)
+    return set_pins(pins, data_dir)
 
 
 def _migrate_entry(v: dict[str, Any]) -> dict[str, Any]:
@@ -196,17 +276,39 @@ def reset_stats(scope: str = "global", session_id: str = "", data_dir: Optional[
 
 
 def get_series(skill_name: str, days: int = 30, scope: str = "global",
-               session_id: str = "", data_dir: Optional[Path] = None) -> list[dict[str, Any]]:
-    """Daily buckets for one skill: ``[{date: YYYY-MM-DD, loads: n}, ...]`` (oldest first).
+               session_id: str = "", data_dir: Optional[Path] = None,
+               granularity: Optional[str] = None) -> list[dict[str, Any]]:
+    """Buckets for one skill, oldest first: ``[{date, loads}, ...]``.
 
-    Derived from the timestamped ``events`` log; ``days`` trailing days ending today.
-    Empty when the skill has no recorded events in the window.
+    ``granularity``: ``"day"`` (default for periods > 3 days) or ``"hour"``
+    (default for periods <= 3 days, e.g. the 1d/3d chart x-axis). Hourly
+    labels are ``YYYY-MM-DDTHH:00`` in local time.
     """
-    from datetime import date, timedelta
-
     stats = _load_stats(_session_path(session_id, data_dir) if scope == "session" else _global_path(data_dir))
     entry = (stats.get("skills") or {}).get(skill_name) or {}
     events = entry.get("events") or []
+    days = max(int(days), 1)
+    if granularity is None:
+        granularity = "hour" if days <= 3 else "day"
+    if granularity == "hour":
+        now = int(time.time())
+        start = now // 3600 * 3600 - (days * 24 - 1) * 3600
+        buckets = {}
+        order = []
+        for i in range(days * 24):
+            label = time.strftime("%Y-%m-%dT%H:00", time.localtime(start + i * 3600))
+            buckets[label] = 0
+            order.append(label)
+        for ts in events:
+            try:
+                label = time.strftime("%Y-%m-%dT%H:00", time.localtime(int(ts)))
+            except Exception:
+                continue
+            if label in buckets:
+                buckets[label] += 1
+        return [{"date": lbl, "loads": buckets[lbl]} for lbl in order]
+    from datetime import date, timedelta
+
     today = date.today()
     buckets = {(today - timedelta(days=i)).isoformat(): 0 for i in range(days)}
     for ts in events:
@@ -220,12 +322,146 @@ def get_series(skill_name: str, days: int = 30, scope: str = "global",
 
 
 def get_series_all(days: int = 30, scope: str = "global",
-                   session_id: str = "", data_dir: Optional[Path] = None) -> dict[str, list[dict[str, Any]]]:
+                   session_id: str = "", data_dir: Optional[Path] = None,
+                   granularity: Optional[str] = None) -> dict[str, list[dict[str, Any]]]:
     """Series for every skill that has recorded events (dashboard table + charts)."""
     stats = _load_stats(_session_path(session_id, data_dir) if scope == "session" else _global_path(data_dir))
     out = {}
     for name in (stats.get("skills") or {}):
-        series = get_series(name, days=days, scope=scope, session_id=session_id, data_dir=data_dir)
+        series = get_series(name, days=days, scope=scope, session_id=session_id,
+                            data_dir=data_dir, granularity=granularity)
         if any(r["loads"] for r in series):
             out[name] = series
     return out
+
+
+# ── period-scoped display table ─────────────────────────────────────────────
+
+def get_table(scope: str = "global", session_id: str = "", data_dir: Optional[Path] = None,
+              days: int = DEFAULT_DAYS) -> dict[str, Any]:
+    """Loads within the trailing ``days``-day window, with category and share.
+
+    ``days <= 0`` means all time. Each row: ``skill`` (name as counted),
+    ``category`` ("" when the skill has no category folder), ``loads`` (within
+    the window), ``pct`` (share of the window's total, 2 decimals),
+    ``last_used`` (latest in-window event; 0 when none), ``all_loads``
+    (all-time counter, unchanged semantics).
+    """
+    days = max(int(days), 0)
+    stats = _load_stats(_session_path(session_id, data_dir) if scope == "session" else _global_path(data_dir))
+    cats = skill_categories()
+    since = int(time.time()) - days * 86400 if days > 0 else 0
+    rows: list[dict[str, Any]] = []
+    for name, v in (stats.get("skills") or {}).items():
+        if not isinstance(v, dict):
+            continue
+        v = _migrate_entry(v)
+        events = [int(e) for e in (v.get("events") or []) if isinstance(e, (int, float))]
+        window = [e for e in events if e >= since] if days > 0 else list(events)
+        loads = len(window) if days > 0 else int(v.get("loads") or 0)
+        last_in = max(window) if window else 0
+        if not last_in and days <= 0:
+            last_in = int(v.get("last_used") or 0)
+        rows.append({"skill": name, "category": cats.get(name, ""), "loads": loads,
+                     "pct": 0.0, "last_used": last_in, "all_loads": int(v.get("loads") or 0)})
+    rows.sort(key=lambda r: (-r["loads"], r["skill"]))
+    total = sum(r["loads"] for r in rows)
+    for r in rows:
+        r["pct"] = round(r["loads"] * 100.0 / total, 2) if total else 0.0
+    return {"scope": scope, "session_id": session_id if scope == "session" else "",
+            "days": days, "total_loads": total,
+            "unique_skills": len([r for r in rows if r["loads"] > 0]),
+            "skills": rows}
+
+
+def group_by_category(table: dict[str, Any]) -> dict[str, Any]:
+    """Aggregate a period table by category (pinned to no skill names).
+
+    Rows: ``category`` ("" → "(uncategorized)"), summed ``loads``, recomputed
+    ``pct`` and ``last_used`` = latest last-used among the category's skills.
+    """
+    agg: dict[str, dict[str, Any]] = {}
+    for r in table.get("skills", []):
+        key = r.get("category") or "(uncategorized)"
+        a = agg.setdefault(key, {"loads": 0, "last_used": 0})
+        a["loads"] += int(r.get("loads") or 0)
+        a["last_used"] = max(a["last_used"], int(r.get("last_used") or 0))
+    total = sum(a["loads"] for a in agg.values())
+    rows = [{"category": k, "loads": a["loads"],
+             "pct": round(a["loads"] * 100.0 / total, 2) if total else 0.0,
+             "last_used": a["last_used"]}
+            for k, a in sorted(agg.items(), key=lambda kv: (-kv[1]["loads"], kv[0]))]
+    return {"scope": table.get("scope", "global"), "session_id": table.get("session_id", ""),
+            "days": table.get("days", 1), "total_loads": total,
+            "unique_skills": len([r for r in rows if r["loads"] > 0]), "skills": rows}
+
+
+def _fmt_ts(ts: int) -> str:
+    return time.strftime("%Y-%m-%d %H:%M", time.localtime(int(ts))) if ts else "-"
+
+
+def render_table(headers: list[str], rows: list[list[Any]], aligns: Optional[list[str]] = None,
+                 bold: bool = False) -> str:
+    """PrettyTable-style ASCII table: ``+---+`` borders, ``|`` cells.
+
+    Headers are uppercased; with ``bold=True`` they are additionally wrapped
+    in ANSI bold (terminal-only output — never for chat/slash text). Column
+    widths fit the widest cell; ``aligns`` holds ``"l"``/``"r"`` per column.
+    """
+    def clean(cell: Any) -> str:
+        return str(cell).replace("\n", " ")
+
+    widths = [len(clean(h)) for h in headers]
+    for row in rows:
+        for i, cell in enumerate(row):
+            if i < len(widths):
+                widths[i] = max(widths[i], len(clean(cell)))
+            else:
+                widths.append(len(clean(cell)))
+
+    def sep() -> str:
+        return "+" + "+".join("-" * (w + 2) for w in widths) + "+"
+
+    def fmt(row: list[Any], bold_cells: bool = False) -> str:
+        cells = []
+        for i, w in enumerate(widths):
+            s = clean(row[i]) if i < len(row) else ""
+            a = aligns[i] if aligns and i < len(aligns) else "l"
+            padded = s.rjust(w) if a == "r" else s.ljust(w)
+            cells.append(f"\033[1m{padded}\033[0m" if bold_cells else padded)
+        return "| " + " | ".join(cells) + " |"
+
+    lines = [sep(), fmt([h.upper() for h in headers], bold_cells=bold), sep()]
+    lines.extend(fmt(r) for r in rows)
+    lines.append(sep())
+    return "\n".join(lines)
+
+
+def format_table(table: dict[str, Any], *, group: bool = False, offset: int = 0,
+                 limit: int = DEFAULT_LIMIT, data_dir: Optional[Path] = None,
+                 use_ansi: bool = False) -> str:
+    """PrettyTable-style ASCII rendering of a period table (CLI + slash)."""
+    scope = table.get("scope", "global")
+    sid = table.get("session_id") or ""
+    days = int(table.get("days", 1))
+    title = f"skill-stats — {scope}" + (f" ({sid})" if sid else "") + f" · period: {days}d"
+    lines = [title, f"total loads ({days}d): {table.get('total_loads', 0)} · unique skills: {table.get('unique_skills', 0)}"]
+    rows = table.get("skills") or []
+    if not rows:
+        lines.append("(no skill loads recorded in this period)")
+        return "\n".join(lines)
+    if group:
+        headers, aligns = ["Category", "Loads", "Pct", "Last used"], ["l", "r", "r", "l"]
+        out = [[r["category"], r["loads"], f"{r['pct']:.2f}%", _fmt_ts(r["last_used"])] for r in rows]
+    else:
+        headers, aligns = ["Skill", "Category", "Loads", "Pct", "Last used"], ["l", "l", "r", "r", "l"]
+        out = [[r["skill"], r.get("category") or "", r["loads"], f"{r['pct']:.2f}%", _fmt_ts(r["last_used"])] for r in rows]
+    offset = max(int(offset), 0)
+    limit = max(int(limit), 1)
+    page = out[offset:offset + limit]
+    body = render_table(headers, page, aligns, bold=use_ansi)
+    lines.append(body)
+    shown_end = offset + len(page)
+    if shown_end < len(out):
+        lines.append(f"({len(out) - shown_end} more rows · use --offset {shown_end})")
+    return "\n".join(lines)

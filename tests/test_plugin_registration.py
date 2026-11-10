@@ -46,7 +46,7 @@ def test_registers_skill_stats_command(ctx):
     (name, handler, kwargs), = ctx.commands
     assert name == "skill-stats"
     assert handler is skill_stats_hooks.on_skill_stats
-    assert kwargs["args_hint"] == "[global] [--json]"
+    assert kwargs["args_hint"] == "[global] [--json] [--day N] [--offset N] [--limit N] [--group]"
 
 
 def test_registers_skill_stats_cli(ctx):

@@ -8,6 +8,8 @@
   var h = React.createElement;
   var PLUGIN_NAME = "skill-stats";
   var API = "/api/plugins/skill-stats";
+  var PERIODS = [1, 3, 7, 30, 60, 90];
+  var LIMITS = [10, 15, 20, 30, 50, 100];
   function formatDate(iso) {
     try {
       return (/* @__PURE__ */ new Date(`${iso}T00:00:00`)).toLocaleDateString(void 0, { month: "short", day: "numeric" });
@@ -15,9 +17,19 @@
       return iso;
     }
   }
+  function formatBucket(iso) {
+    if (typeof iso === "string" && iso.includes("T")) {
+      const [d, hm] = iso.split("T");
+      return `${d.slice(5)} ${hm.slice(0, 5)}`;
+    }
+    return formatDate(iso);
+  }
   function formatTime(ts) {
     if (!ts) return "\u2014";
     return new Date(ts * 1e3).toLocaleString(void 0, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  }
+  function fmtPct(p) {
+    return `${Number(p ?? 0).toFixed(2)}%`;
   }
   function parseHash(hash) {
     const m = /^#\/skills\/([^/?#]+)/.exec(hash || "");
@@ -38,18 +50,33 @@
   function backToTable() {
     window.location.hash = "";
   }
+  async function postJSON(url, body) {
+    const profile = new URLSearchParams(window.location.search).get("profile");
+    if (profile && !url.includes("profile=")) {
+      url += (url.includes("?") ? "&" : "?") + "profile=" + encodeURIComponent(profile);
+    }
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(`POST ${url} -> ${res.status}`);
+    return res.json();
+  }
   function Chart({ series, kind, width = 720, height = 260 }) {
     if (!series || series.length === 0) {
       return h("p", { className: "text-sm text-text-secondary" }, "No recorded events in this window yet (charts start with the first counted load).");
     }
-    const max = Math.max(1, ...series.map((r) => r.loads));
+    const val = (r) => Number((r && (r.loads ?? r.count)) ?? 0) || 0;
+    const max = Math.max(1, ...series.map(val));
     const padL = 44, padR = 12, padT = 14, padB = 28;
     const iw = width - padL - padR, ih = height - padT - padB;
     const x = (i) => padL + (series.length === 1 ? iw / 2 : iw * i / (series.length - 1));
     const y = (v) => padT + ih - ih * v / max;
     const bw = Math.max(2, Math.min(18, iw / series.length * 0.6));
     const ticks = [0, Math.ceil(max / 2), max].filter((v, i, a) => a.indexOf(v) === i);
-    const line = series.map((r, i) => `${x(i)},${y(r.loads)}`).join(" ");
+    const line = series.map((r, i) => `${x(i)},${y(val(r))}`).join(" ");
     return h(
       "svg",
       { viewBox: `0 0 ${width} ${height}`, width: "100%", role: "img", "aria-label": `${kind} chart` },
@@ -64,12 +91,12 @@
       kind === "bar" ? series.map((r, i) => h("rect", {
         key: r.date,
         x: x(i) - bw / 2,
-        y: y(r.loads),
+        y: y(val(r)),
         width: bw,
-        height: Math.max(0, ih - (y(r.loads) - padT)),
+        height: Math.max(0, ih - (y(val(r)) - padT)),
         rx: 2,
         fill: "currentColor",
-        opacity: r.loads ? 0.85 : 0.15
+        opacity: val(r) ? 0.85 : 0.15
       })) : [
         h("polygon", { key: "area", points: `${x(0)},${y(0)} ${line} ${x(series.length - 1)},${y(0)}`, fill: "currentColor", opacity: 0.15 }),
         h("polyline", { key: "line", points: line, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinejoin: "round" })
@@ -78,54 +105,139 @@
         (i) => h(
           "text",
           { key: `x${i}`, x: x(i), y: height - 8, textAnchor: "middle", fontSize: 11, fill: "currentColor", opacity: 0.7 },
-          formatDate(series[i].date)
+          formatBucket(series[i].date)
         )
       )
     );
   }
-  function TableView({ data, days, setDays, refresh }) {
+  function sortRows(skills, pins) {
+    const pinned = new Set(pins || []);
+    return [...skills].sort((a, b) => {
+      const pa = pinned.has(a.skill) ? 0 : 1, pb = pinned.has(b.skill) ? 0 : 1;
+      if (pa !== pb) return pa - pb;
+      if (b.loads !== a.loads) return b.loads - a.loads;
+      return String(a.skill).localeCompare(String(b.skill));
+    });
+  }
+  function groupRows(skills) {
+    const agg = /* @__PURE__ */ new Map();
+    let total = 0;
+    for (const s of skills) {
+      const key = s.category || "(uncategorized)";
+      const a = agg.get(key) || { category: key, loads: 0, last_used: 0 };
+      a.loads += Number(s.loads ?? s.count ?? 0);
+      a.last_used = Math.max(a.last_used, Number(s.last_used ?? 0));
+      agg.set(key, a);
+      total += Number(s.loads ?? s.count ?? 0);
+    }
+    const rows = [...agg.values()].map((a) => ({ ...a, pct: total ? a.loads * 100 / total : 0 }));
+    rows.sort((a, b) => b.loads - a.loads || a.category.localeCompare(b.category));
+    return rows;
+  }
+  function PeriodButtons({ days, setDays }) {
+    return PERIODS.map(
+      (d) => h(Button, { key: d, size: "sm", variant: days === d ? "default" : "outline", onClick: () => setDays(d) }, `${d}d`)
+    );
+  }
+  function TableView({ data, days, setDays, refresh, limit, setLimit, page, setPage, group, setGroup, onPin }) {
     const skills = data?.skills ?? [];
+    const pins = data?.pins ?? [];
+    const rows = group ? groupRows(skills) : sortRows(skills, pins);
+    const pageCount = Math.max(1, Math.ceil(rows.length / limit));
+    const safePage = Math.min(page, pageCount - 1);
+    const pageRows = rows.slice(safePage * limit, safePage * limit + limit);
+    const pinnedSet = new Set(pins);
+    const headers = group ? ["Category", "Loads", "%", "Last used"] : ["Skill", "Category", "Loads", "%", "Last used", "Chart", "Pin"];
     return h(
       Card,
       null,
       h(
         CardHeader,
         null,
-        h(CardTitle, null, `Skill usage \u2014 global (last ${days} days)`),
-        h("p", { className: "text-sm text-text-secondary" }, data ? `total loads: ${data.total_loads} \xB7 unique skills: ${data.unique_skills}` : ""),
+        h(CardTitle, null, `Skill usage${group ? " \u2014 by category" : ""} (last ${days}d)`),
+        h(
+          "p",
+          { className: "text-sm text-text-secondary" },
+          data ? `loads (${days}d): ${data.period_loads ?? 0} \xB7 total loads: ${data.total_loads ?? 0} \xB7 unique skills: ${data.unique_skills ?? 0}` : ""
+        ),
         h(
           "div",
-          { className: "flex items-center gap-2" },
-          [7, 30, 90].map(
-            (d) => h(Button, { key: d, size: "sm", variant: days === d ? "default" : "outline", onClick: () => setDays(d) }, `${d}d`)
-          ),
+          { className: "flex flex-wrap items-center gap-2" },
+          PeriodButtons({ days, setDays }),
+          h(Button, {
+            size: "sm",
+            variant: group ? "default" : "outline",
+            onClick: () => {
+              setGroup(!group);
+              setPage(0);
+            },
+            "aria-label": "Toggle group by category"
+          }, group ? "Group: category" : "Group: off"),
+          h("span", { className: "mx-1" }),
+          h("label", { className: "text-sm text-text-secondary" }, "Per page "),
+          h("select", {
+            value: String(limit),
+            onChange: (e) => {
+              setLimit(Number(e.target.value));
+              setPage(0);
+            },
+            className: "bg-transparent border border-current/20 rounded px-1 py-0.5 text-sm",
+            "aria-label": "Rows per page"
+          }, LIMITS.map((n) => h("option", { key: n, value: String(n) }, String(n)))),
+          h(Button, { size: "sm", variant: "outline", disabled: safePage <= 0, onClick: () => setPage(safePage - 1), "aria-label": "Previous page" }, "\u2190"),
+          h("span", { className: "text-sm text-text-secondary" }, `page ${safePage + 1}/${pageCount}`),
+          h(Button, { size: "sm", variant: "outline", disabled: safePage >= pageCount - 1, onClick: () => setPage(safePage + 1), "aria-label": "Next page" }, "\u2192"),
           h(Button, { size: "sm", variant: "outline", onClick: refresh }, "Refresh")
         )
       ),
       h(
         CardContent,
         null,
-        !data ? h("p", { className: "text-sm" }, "Loading\u2026") : skills.length === 0 ? h("p", { className: "text-sm text-text-secondary" }, "No skill loads recorded yet \u2014 load a skill in chat, then come back.") : h(
+        !data ? h("p", { className: "text-sm" }, "Loading\u2026") : rows.length === 0 ? h("p", { className: "text-sm text-text-secondary" }, "No skill loads recorded in this period \u2014 load a skill in chat, then come back.") : h(
           "table",
           { className: "w-full text-sm" },
           h("thead", null, h(
             "tr",
             { className: "text-left text-text-secondary" },
-            ["Skill", "Loads", "Last used", "Chart"].map((c) => h("th", { key: c, className: "py-2 pr-4 font-medium" }, c))
+            headers.map((c) => h("th", { key: c, className: "py-2 pr-4 font-medium" }, c))
           )),
           h(
             "tbody",
             null,
-            skills.map((s) => h(
+            pageRows.map((s) => group ? h(
+              "tr",
+              { key: s.category, className: "border-t border-current/10" },
+              h("td", { className: "py-2 pr-4 font-medium" }, s.category),
+              h("td", { className: "py-2 pr-4" }, h(Badge, null, String(s.loads ?? 0))),
+              h("td", { className: "py-2 pr-4" }, fmtPct(s.pct)),
+              h("td", { className: "py-2 pr-4 text-text-secondary" }, formatTime(s.last_used))
+            ) : h(
               "tr",
               { key: s.skill, className: "border-t border-current/10" },
-              h("td", { className: "py-2 pr-4 font-medium" }, s.skill),
+              h(
+                "td",
+                { className: "py-2 pr-4 font-medium" },
+                pinnedSet.has(s.skill) ? "\u2605 " : "",
+                s.skill
+              ),
+              h("td", { className: "py-2 pr-4 text-text-secondary" }, s.category || ""),
               h("td", { className: "py-2 pr-4" }, h(Badge, null, String(s.loads ?? s.count ?? 0))),
+              h("td", { className: "py-2 pr-4" }, fmtPct(s.pct)),
               h("td", { className: "py-2 pr-4 text-text-secondary" }, formatTime(s.last_used)),
               h(
                 "td",
-                { className: "py-2" },
+                { className: "py-2 pr-4" },
                 h(Button, { size: "sm", variant: "outline", "aria-label": `Chart for ${s.skill}`, onClick: () => openChart(s.skill) }, "\u{1F4CA} Chart")
+              ),
+              h(
+                "td",
+                { className: "py-2" },
+                h(Button, {
+                  size: "sm",
+                  variant: "outline",
+                  "aria-label": pinnedSet.has(s.skill) ? `Unpin ${s.skill}` : `Pin ${s.skill}`,
+                  onClick: () => onPin(s.skill, !pinnedSet.has(s.skill))
+                }, pinnedSet.has(s.skill) ? "\u2605 Unpin" : "\u2606 Pin")
               )
             ))
           )
@@ -145,24 +257,24 @@
       load();
     }, [load]);
     const series = detail ? kind === "line" ? detail.cumulative : detail.series : null;
+    const gran = detail?.granularity === "hour" ? "hourly x-axis" : "daily x-axis";
     return h(
       Card,
       null,
       h(
         CardHeader,
         null,
-        h(CardTitle, null, detail ? `${detail.skill} \u2014 ${detail.loads ?? detail.count ?? 0} loads` : `Skill chart`),
+        h(CardTitle, null, detail ? `${detail.skill} \u2014 ${detail.period_loads ?? detail.loads ?? 0} loads (${days}d)` : "Skill chart"),
         h(
           "div",
-          { className: "flex items-center gap-2" },
+          { className: "flex flex-wrap items-center gap-2" },
           h(Button, { size: "sm", variant: "outline", onClick: backToTable }, "\u2190 Back"),
-          [7, 30, 90].map(
-            (d) => h(Button, { key: d, size: "sm", variant: days === d ? "default" : "outline", onClick: () => setDays(d) }, `${d}d`)
-          ),
+          PeriodButtons({ days, setDays }),
           h("span", { className: "mx-1" }),
           h(Button, { size: "sm", variant: kind === "bar" ? "default" : "outline", "aria-label": "Bar chart", onClick: () => setKind("bar") }, "\u25C0 Bar"),
           h(Button, { size: "sm", variant: kind === "line" ? "default" : "outline", "aria-label": "Cumulative line chart", onClick: () => setKind("line") }, "Line \u25B6"),
-          h(Badge, null, kind === "line" ? "cumulative" : "daily")
+          h(Badge, null, kind === "line" ? "cumulative" : "daily"),
+          h(Badge, null, gran)
         )
       ),
       h(
@@ -175,17 +287,28 @@
   function SkillStatsPage() {
     const route = useHashRoute();
     const [data, setData] = useState(null);
-    const [days, setDays] = useState(30);
+    const [days, setDays] = useState(1);
+    const [limit, setLimit] = useState(10);
+    const [page, setPage] = useState(0);
+    const [group, setGroup] = useState(false);
     const refresh = useCallback(() => {
       SDK.fetchJSON(`${API}/overview?days=${days}`).then(setData).catch(() => setData(null));
     }, [days]);
     useEffect(() => {
       refresh();
     }, [refresh]);
+    const onPin = useCallback(async (skill, pinned) => {
+      try {
+        const res = await postJSON(`${API}/pins`, { skill, pinned });
+        setData((d) => d ? { ...d, pins: res.pins } : d);
+      } catch {
+        refresh();
+      }
+    }, [refresh]);
     return h(
       "div",
       { className: "max-w-5xl p-4" },
-      route.view === "chart" ? h(ChartView, { skill: route.skill, days, setDays }) : h(TableView, { data, days, setDays, refresh })
+      route.view === "chart" ? h(ChartView, { skill: route.skill, days, setDays }) : h(TableView, { data, days, setDays, refresh, limit, setLimit, page, setPage, group, setGroup, onPin })
     );
   }
   window.__HERMES_PLUGINS__.register(PLUGIN_NAME, SkillStatsPage);

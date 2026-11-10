@@ -53,23 +53,64 @@ def on_session_end(session_id: str = "", **_: Any) -> None:
     return None
 
 
+def _parse_display_args(tokens: list[str]) -> dict[str, Any]:
+    """Shared display options for ``/skill-stats`` and ``hermes skill-stats``."""
+    opts: dict[str, Any] = {"days": _store.DEFAULT_DAYS, "offset": 0,
+                            "limit": _store.DEFAULT_LIMIT, "group": False}
+    i = 0
+    while i < len(tokens):
+        t = tokens[i]
+        try:
+            if t in ("--day", "-d") and i + 1 < len(tokens):
+                i += 1
+                opts["days"] = max(int(tokens[i]), 0)
+            elif t == "--offset" and i + 1 < len(tokens):
+                i += 1
+                opts["offset"] = max(int(tokens[i]), 0)
+            elif t == "--limit" and i + 1 < len(tokens):
+                i += 1
+                opts["limit"] = max(int(tokens[i]), 1)
+            elif t in ("--group", "--group-by-category"):
+                opts["group"] = True
+        except ValueError:
+            pass  # ignore malformed values, keep defaults
+        i += 1
+    return opts
+
+
 def on_skill_stats(raw_args: str = "", session_id: str = "", **_: Any) -> Optional[str]:
-    """``/skill-stats`` — this session by default; ``global`` for all-time."""
+    """``/skill-stats`` — this session by default; ``global`` for all-time.
+
+    Options: ``[global] [--json] [reset] [--day N] [--offset N] [--limit N]
+    [--group]``. Default period is 1 day; the table is a bordered ASCII table
+    with category and percentage columns.
+    """
     tokens = (raw_args or "").strip().split()
     as_json = "--json" in tokens
     scope = "global" if "global" in tokens else "session"
     if "reset" in tokens:
         _store.reset_stats(scope, session_id=str(session_id or ""))
         return f"skill-stats: reset {scope} stats."
-    stats = _store.get_stats(scope, session_id=str(session_id or ""))
+    opts = _parse_display_args(tokens)
+    table = _store.get_table(scope, session_id=str(session_id or ""), days=opts["days"])
+    if opts["group"]:
+        table = _store.group_by_category(table)
     if as_json:
-        stats["series"] = _store.get_series_all(scope=scope, session_id=str(session_id or ""))
-        return json.dumps(stats, indent=2)
-    text = _store.format_stats(stats)
-    if stats["skills"]:
-        top = stats["skills"][0]["skill"]
-        series = _store.get_series(top, days=14, scope=scope, session_id=str(session_id or ""))
+        table["offset"] = opts["offset"]
+        table["limit"] = opts["limit"]
+        table["group"] = opts["group"]
+        table["series"] = _store.get_series_all(days=max(opts["days"], 1), scope=scope,
+                                                session_id=str(session_id or ""))
+        return json.dumps(table, indent=2)
+    text = _store.format_table(table, group=opts["group"], offset=opts["offset"],
+                               limit=opts["limit"])
+    rows = table.get("skills") or []
+    if rows and not opts["group"]:
+        top = rows[0]["skill"]
+        series = _store.get_series(top, days=max(opts["days"], 1), scope=scope,
+                                   session_id=str(session_id or ""))
+        label = f"last {opts['days']}d" if opts["days"] > 0 else "all time"
         if any(r["loads"] for r in series):
-            text += "\n\nTop skill — last 14 days (bar):\n" + _charts.render_chart(top, series, "bar")
-            text += "\n\nTop skill — cumulative (line):\n" + _charts.render_chart(top, series, "line")
+            text += f"\n\nTop — {label} (bar):\n" + _charts.render_chart(top, series, "bar")
+            text += "\n\nTop — cumulative (line):\n" + _charts.render_chart(top, series, "line")
     return text

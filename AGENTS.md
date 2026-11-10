@@ -1,7 +1,7 @@
 # Project Context
 
-Hermes Agent plugin "skill-stats" (v1.4.2): per-skill usage counters with
-daily time-series charts. Standalone directory plugin — NO Hermes core
+Hermes Agent plugin "skill-stats" (v0.9.0): per-skill usage counters with
+period-scoped time-series charts. Standalone directory plugin — NO Hermes core
 changes. Python is stdlib-only; the only extra dependency anywhere is
 FastAPI (dashboard API tests). Requirements: Python >= 3.11.
 
@@ -11,9 +11,14 @@ FastAPI (dashboard API tests). Requirements: Python >= 3.11.
   CLI `hermes skill-stats`, system-prompt section. All wiring goes through
   `register(ctx)`; no side effects at import time.
 - `skill_stats_store.py` — JSON persistence + stats/series API. Storage:
-  `$HERMES_HOME/skill-stats/global.json` and `sessions/<session_id>.json`,
-  atomic tmp-file replace, legacy `count`→`loads` migrated on read, events
-  capped at 1000/skill.
+  `$HERMES_HOME/skill-stats/global.json`, `sessions/<session_id>.json` and
+  `pins.json` (dashboard pin list), atomic tmp-file replace, legacy
+  `count`→`loads` migrated on read, events capped at 1000/skill. Also:
+  `skill_categories()` (category from `<skills>/<category>/<skill>/SKILL.md`),
+  `get_table()`/`group_by_category()`/`format_table()` (period-scoped display),
+  `get_series(granularity=)` ("hour" for periods <= 3 days, else "day"),
+  `get_pins/set_pins/toggle_pin`, `render_table` (ASCII, PrettyTable-style),
+  `VERSION`.
 - `skill_stats_hooks.py` — counting (only `skill_view` counts; counting in
   `pre_tool_call`, so failed loads still count) + the slash command.
 - `skill_stats_cli.py` — argparse CLI; bare call = global stats.
@@ -34,13 +39,23 @@ FastAPI (dashboard API tests). Requirements: Python >= 3.11.
 
 ## Data semantics
 - Env override for the data dir: `SKILL_STATS_DIR` (legacy
-  `SKILL_ANALYTICS_DIR` still honored as fallback).
+  `SKILL_ANALYTICS_DIR` still honored).
 - Charts show recorded events only — never fabricate history (pre-v1.3
   counters legitimately have no events).
 - Unknown/namespaced skill names (`superpowers:brainstorming`) are counted
   verbatim as given.
 - Three surfaces must agree: terminal charts, Dashboard tab, TUI widget all
-  render the same bar (daily) / line (cumulative) pair.
+  render bar (daily) / line (cumulative) pairs for the same period; periods
+  1d/3d bucket hourly, longer periods daily.
+- Period options everywhere: 1, 3, 7, 30, 60, 90 days; default period 1 day;
+  default page limit 10 (`PERIOD_OPTIONS`/`DEFAULT_DAYS`/`DEFAULT_LIMIT` in
+  the store).
+- Categories resolve at display time from the skills dir — never stored in
+  the stats files (skills can move between categories).
+- Plugin version lives in `plugin.yaml`, `package.json`,
+  `dashboard/manifest.json`, `pyproject.toml` AND `skill_stats_store.VERSION`
+  — update all five together. Version stays 0.x until the user calls the
+  1.0.0 release.
 
 ## Conventions
 - Stdlib-only Python, `from __future__ import annotations`, type hints.
@@ -59,4 +74,4 @@ FastAPI (dashboard API tests). Requirements: Python >= 3.11.
   so plugin changes require a new Hermes session to take effect.
 - Update `README.md` (user-facing command table) and `version` in BOTH
   `plugin.yaml` and `package.json` whenever behavior commands change —
-  they ship version 1.4.2 together.
+  they ship 0.9.0 together (see Data semantics for the full version list).

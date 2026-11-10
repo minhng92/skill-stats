@@ -8,8 +8,12 @@ read-only FastAPI backend.
   entry `dist/index.js`, api `plugin_api.py`). Version here must match the
   root `plugin.yaml` / `package.json`.
 - `plugin_api.py` — FastAPI router mounted by the host at
-  `/api/plugins/skill-stats/`. Routes: `GET /overview?days=`,
-  `GET /skills/{name}?days=&scope=&session_id=`, `GET /session?session_id=`.
+  `/api/plugins/skill-stats/`. Routes: `GET /overview?days=&profile=`
+  (period-scoped rows: skill/category/loads/pct/last_used + all-time totals +
+  pins + series), `GET /skills/{name}?days=&granularity=` (hourly buckets for
+  days <= 3, daily beyond; auto unless `granularity=hour|day` given),
+  `GET/POST /pins` (pin list; POST body `{"skill", "pinned?"}` — omit
+  `pinned` to toggle), `GET /session?session_id=`.
 - `src/index.jsx` — the only UI source. Compiled IIFE bundle.
 - `dist/index.js` — committed build artifact; the host serves THIS file,
   not `src/`.
@@ -26,8 +30,21 @@ read-only FastAPI backend.
   no package, so relative imports are unavailable — it loads
   `skill_stats_store.py` from the parent dir by path (`_store()`). Keep
   that pattern; don't convert to `from .. import`.
-- Backend is read-only against `$HERMES_HOME/skill-stats/` and clamps
-  `days` to 1..90; the UI's 7/30/90-day buttons stay within that.
+- The host appends `&profile=<name>` to plugin API requests. Honor it:
+  `default`/empty → the server's `$HERMES_HOME/skill-stats`; any other
+  profile → `$HERMES_HOME/profiles/<name>/skill-stats` (via
+  `_profile_data_dir`, which rejects unsafe names by falling back to
+  default). Never ignore the param — that shows the wrong profile's data.
+- Frontend must read numeric series/counter values with a
+  `r.loads ?? r.count` fallback (the `val` helper in `Chart`) — a
+  long-running dashboard server may still serve the legacy `count` field
+  name; reading `r.loads` alone renders `NaN` geometry and a blank chart.
+- Backend clamps `days` to 1..90 (period options 1/3/7/30/60/90 in the UI,
+  default 1d); only `/pins` writes (pins.json) — everything else is
+  read-only against `$HERMES_HOME/skill-stats/`.
+- Table UI: Skill / Category / Loads / % / Last used / Chart / Pin columns;
+  pinned skills (★) sort first; ← → paging with a per-page dropdown
+  (10/15/20/30/50/100, default 10) and a group-by-category switcher.
 - Routing is hash-based (`/skill-stats#/skills/<name>`) via
   `window.location.hash` — no router library.
 - Theme: use SDK components (`Card`, `Badge`, `Button`) and `cn` classes
