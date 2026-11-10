@@ -65,9 +65,76 @@ def _global_path(data_dir: Optional[Path] = None) -> Path:
     return (data_dir or _data_dir()) / "global.json"
 
 
+def _safe_name(session_id: str) -> str:
+    return "".join(c if (c.isalnum() or c in "-_.") else "_" for c in (session_id or "default"))
+
+
 def _session_path(session_id: str, data_dir: Optional[Path] = None) -> Path:
-    safe = "".join(c if (c.isalnum() or c in "-_.") else "_" for c in (session_id or "default"))
-    return (data_dir or _data_dir()) / "sessions" / f"{safe}.json"
+    return (data_dir or _data_dir()) / "sessions" / f"{_safe_name(session_id)}.json"
+
+
+def _lookup_session_by_title(query: str) -> str:
+    """Look a session title/display_name up in Hermes' own state DB (read-only).
+
+    Exact match first, then a prefix match; the most recently active wins.
+    Returns the session id (``chat_id`` or ``id``) or "" when nothing matches
+    or the DB is unavailable/shaped differently.
+    """
+    db_path = _hermes_home() / "state.db"
+    if not db_path.exists():
+        return ""
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            for clause, params in (
+                ("title = ? OR display_name = ?", (query, query)),
+                ("title LIKE ? OR display_name LIKE ?", (f"{query}%", f"{query}%")),
+            ):
+                try:
+                    row = con.execute(
+                        f"SELECT id, chat_id FROM sessions WHERE {clause} "
+                        "ORDER BY COALESCE(last_activity_at, started_at) DESC LIMIT 1",
+                        params,
+                    ).fetchone()
+                except sqlite3.Error:
+                    continue  # older schema without these columns
+                if row and (row[1] or row[0]):
+                    return str(row[1] or row[0])
+        finally:
+            con.close()
+    except Exception as e:
+        logger.debug("skill-stats: title lookup for %r failed: %s", query, e)
+    return ""
+
+
+def resolve_session_id(query: str, data_dir: Optional[Path] = None) -> tuple[str, str]:
+    """Resolve a ``--session`` value to a stored session id.
+
+    Accepts, in order: an exact session id, a unique id **prefix** (short
+    forms like ``local-c12c3f0c1d37f66b``; the most recently written file wins
+    when several ids share the prefix), or a session **title/display_name**
+    recorded in Hermes' state DB (``stageshow-bentora``). Returns
+    ``(session_id, how)`` with ``how`` one of ``"exact"``, ``"prefix"``,
+    ``"title"`` or ``"none"`` (empty id).
+    """
+    if not query:
+        return "", "none"
+    sdir = (data_dir or _data_dir()) / "sessions"
+    if (sdir / f"{_safe_name(query)}.json").exists():
+        return query, "exact"
+    try:
+        matches = [p for p in sdir.glob("*.json") if p.stem.startswith(query)]
+    except OSError:
+        matches = []
+    if matches:
+        matches.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        return matches[0].stem, "prefix"
+    resolved = _lookup_session_by_title(query)
+    if resolved:
+        return resolved, "title"
+    return "", "none"
 
 
 def _pins_path(data_dir: Optional[Path] = None) -> Path:
@@ -396,6 +463,24 @@ def group_by_category(table: dict[str, Any]) -> dict[str, Any]:
             "unique_skills": len([r for r in rows if r["loads"] > 0]), "skills": rows}
 
 
+def save_output(path: str, *, text: Optional[str] = None, data: Optional[dict[str, Any]] = None,
+                force_json: bool = False) -> Path:
+    """Write ``text`` (or ``data`` as JSON) to ``path``.
+
+    JSON is written when ``force_json`` (``--json``) is set or the file
+    extension is ``.json``; otherwise ``text`` is written verbatim. Parent
+    directories are created as needed.
+    """
+    p = Path(path).expanduser()
+    if (force_json or p.suffix.lower() == ".json") and data is not None:
+        content = json.dumps(data, indent=2, ensure_ascii=False)
+    else:
+        content = text or ""
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content, encoding="utf-8")
+    return p
+
+
 def _fmt_ts(ts: int) -> str:
     return time.strftime("%Y-%m-%d %H:%M", time.localtime(int(ts))) if ts else "-"
 
@@ -451,10 +536,10 @@ def format_table(table: dict[str, Any], *, group: bool = False, offset: int = 0,
         lines.append("(no skill loads recorded in this period)")
         return "\n".join(lines)
     if group:
-        headers, aligns = ["Category", "Loads", "Pct", "Last used"], ["l", "r", "r", "l"]
+        headers, aligns = ["Category", "Loads", "%", "Last used"], ["l", "r", "r", "l"]
         out = [[r["category"], r["loads"], f"{r['pct']:.2f}%", _fmt_ts(r["last_used"])] for r in rows]
     else:
-        headers, aligns = ["Skill", "Category", "Loads", "Pct", "Last used"], ["l", "l", "r", "r", "l"]
+        headers, aligns = ["Skill", "Category", "Loads", "%", "Last used"], ["l", "l", "r", "r", "l"]
         out = [[r["skill"], r.get("category") or "", r["loads"], f"{r['pct']:.2f}%", _fmt_ts(r["last_used"])] for r in rows]
     offset = max(int(offset), 0)
     limit = max(int(limit), 1)

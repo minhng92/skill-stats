@@ -5,10 +5,10 @@
  * `/widgets-reload` and `/skill-stats`.
  *
  * Modal flow:
- *   table: Up/Down select a skill, Enter opens its chart, 1-7 switch the
+ *   table: Up/Down select a skill, Enter opens its chart, 1-6 switch the
  *          period (1d 3d 7d 30d 60d 90d), Esc/q closes
  *   chart: Left/Right toggles bar <-> line (cumulative), Up/Down switches
- *          skill, 1-7 switch period, Esc back to table
+ *          skill, 1-6 switch period, Esc back to table
  *
  * Data: the CURRENT session's stats — newest file in
  * $HERMES_HOME/skill-stats/sessions/ (fallback: global.json). Written by the
@@ -19,7 +19,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const PERIODS = [1, 3, 7, 30, 60, 90]; // shortcut keys 1..7
+const PERIODS = [1, 3, 7, 30, 60, 90]; // shortcut keys 1..6
 const DEFAULT_PERIOD_IDX = 0; // 1d
 const TABLE_LIMIT = 10;
 
@@ -185,12 +185,12 @@ export default function register(sdk) {
       h(Text, { bold: true, color: t.color.label }, `${r.name} — ${r.loads} loads · ${kind} · ${axis}`),
       ...rows.map((row, i) => h(Text, { key: `r${i}`, color: t.color.primary }, row)),
       h(Text, { color: t.color.muted }, axisLine(labels, 52)),
-      h(Text, { color: t.color.muted }, 'Left/Right: bar <-> line · Up/Down: skill · 1-7: period · Esc: back'));
+      h(Text, { color: t.color.muted }, 'Left/Right: bar <-> line · Up/Down: skill · 1-6: period · Esc: back'));
   }
 
   defineWidgetApp({
     id: 'skill-stats',
-    help: 'skill usage stats (session): arrows select, Enter chart, 1-7 period, Left/Right bar/line',
+    help: 'skill usage stats (session): arrows select, Enter chart, 1-6 period, Left/Right bar/line',
     mode: 'modal',
 
     init() {
@@ -205,7 +205,7 @@ export default function register(sdk) {
     },
 
     reduce(state, { ch, key }) {
-      const periodKeys = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6 };
+      const periodKeys = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5 };
       const setPeriod = (s, idx) => {
         const days = PERIODS[idx];
         if (days === s.days) return s; // same object: no re-render
@@ -245,7 +245,7 @@ export default function register(sdk) {
     },
 
     render({ state, t }) {
-      const periodLabel = `period ${state.days}d · keys 1-7 · ${TABLE_LIMIT}/page`;
+      const periodLabel = `period ${state.days}d · keys 1-6 · ${TABLE_LIMIT}/page`;
       const scopeLabel = state.scope === 'session' ? `session ${state.sessionFile}` : 'global (no session yet)';
       return h(Overlay, null,
         h(Dialog, { width: 64 },
@@ -255,7 +255,7 @@ export default function register(sdk) {
             ? chartView(state, t)
             : h(Box, { flexDirection: 'column' },
                 ...tableRows(state, t),
-                h(Text, { color: t.color.muted }, '↑/↓ select · Enter chart · 1-7 period · Esc close'))));
+                h(Text, { color: t.color.muted }, '↑/↓ select · Enter chart · 1-6 period · Esc close'))));
     },
   });
 }

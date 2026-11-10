@@ -3,7 +3,7 @@
   var SDK = window.__HERMES_PLUGIN_SDK__;
   var { React } = SDK;
   var { useState, useEffect, useCallback } = SDK.hooks;
-  var { Card, CardHeader, CardTitle, CardContent, Badge, Button } = SDK.components;
+  var { Card, CardHeader, CardTitle, CardContent, Badge, Button, Tabs, TabsList, TabsTrigger } = SDK.components;
   var { cn } = SDK.utils;
   var h = React.createElement;
   var PLUGIN_NAME = "skill-stats";
@@ -134,10 +134,31 @@
     rows.sort((a, b) => b.loads - a.loads || a.category.localeCompare(b.category));
     return rows;
   }
-  function PeriodButtons({ days, setDays }) {
-    return PERIODS.map(
-      (d) => h(Button, { key: d, size: "sm", variant: days === d ? "default" : "outline", onClick: () => setDays(d) }, `${d}d`)
-    );
+  function RadioGroup({ value, onChange, options, label }) {
+    return h(Tabs, { defaultValue: value }, (val, setVal) => h(
+      TabsList,
+      { role: "radiogroup", "aria-label": label },
+      options.map((o) => h(TabsTrigger, {
+        key: o.value,
+        value: o.value,
+        active: o.value === val,
+        role: "radio",
+        "aria-checked": o.value === val,
+        "aria-label": o.label,
+        onClick: () => {
+          setVal(o.value);
+          onChange(o.value);
+        }
+      }, o.label))
+    ));
+  }
+  function PeriodSelect({ days, setDays }) {
+    return RadioGroup({
+      value: String(days),
+      onChange: (v) => setDays(Number(v)),
+      label: "Statistics period",
+      options: PERIODS.map((d) => ({ value: String(d), label: `${d}d` }))
+    });
   }
   function TableView({ data, days, setDays, refresh, limit, setLimit, page, setPage, group, setGroup, onPin }) {
     const skills = data?.skills ?? [];
@@ -163,16 +184,16 @@
         h(
           "div",
           { className: "flex flex-wrap items-center gap-2" },
-          PeriodButtons({ days, setDays }),
-          h(Button, {
-            size: "sm",
-            variant: group ? "default" : "outline",
-            onClick: () => {
-              setGroup(!group);
+          PeriodSelect({ days, setDays }),
+          RadioGroup({
+            value: group ? "category" : "skill",
+            onChange: (v) => {
+              setGroup(v === "category");
               setPage(0);
             },
-            "aria-label": "Toggle group by category"
-          }, group ? "Group: category" : "Group: off"),
+            label: "Group by skill or category",
+            options: [{ value: "skill", label: "Skill" }, { value: "category", label: "Category" }]
+          }),
           h("span", { className: "mx-1" }),
           h("label", { className: "text-sm text-text-secondary" }, "Per page "),
           h("select", {
@@ -269,10 +290,13 @@
           "div",
           { className: "flex flex-wrap items-center gap-2" },
           h(Button, { size: "sm", variant: "outline", onClick: backToTable }, "\u2190 Back"),
-          PeriodButtons({ days, setDays }),
-          h("span", { className: "mx-1" }),
-          h(Button, { size: "sm", variant: kind === "bar" ? "default" : "outline", "aria-label": "Bar chart", onClick: () => setKind("bar") }, "\u25C0 Bar"),
-          h(Button, { size: "sm", variant: kind === "line" ? "default" : "outline", "aria-label": "Cumulative line chart", onClick: () => setKind("line") }, "Line \u25B6"),
+          PeriodSelect({ days, setDays }),
+          RadioGroup({
+            value: kind,
+            onChange: setKind,
+            label: "Chart type",
+            options: [{ value: "bar", label: "Bar" }, { value: "line", label: "Line" }]
+          }),
           h(Badge, null, kind === "line" ? "cumulative" : "daily"),
           h(Badge, null, gran)
         )

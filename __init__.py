@@ -22,12 +22,12 @@ def register(ctx) -> None:
     ctx.register_hook("on_session_end", skill_stats_hooks.on_session_end)
     ctx.register_command(
         "skill-stats", skill_stats_hooks.on_skill_stats,
-        description="This session's skill usage: /skill-stats [--day N] [--offset N] [--limit N] [--group] · global: /skill-stats global · reset session: /skill-stats reset",
-        args_hint="[global] [--json] [--day N] [--offset N] [--limit N] [--group]",
+        description="Skill usage: /skill-stats shows this session · /skill-stats global · /skill-stats --session <id> [--day N] [--offset N] [--limit N] [--group] [--output <file>] · reset: /skill-stats reset",
+        args_hint="[global] [--session <id>] [--json] [--day N] [--offset N] [--limit N] [--group] [--output <file>]",
     )
     ctx.register_cli_command(
         "skill-stats",
-        "Per-skill usage statistics — bare call shows global; /skill-stats shows this session",
+        "Per-skill usage statistics — global by default; --session/-s selects session scope",
         skill_stats_cli.setup_cli,
         skill_stats_cli.handle_cli,
     )

@@ -13,7 +13,8 @@ read-only FastAPI backend.
   pins + series), `GET /skills/{name}?days=&granularity=` (hourly buckets for
   days <= 3, daily beyond; auto unless `granularity=hour|day` given),
   `GET/POST /pins` (pin list; POST body `{"skill", "pinned?"}` — omit
-  `pinned` to toggle), `GET /session?session_id=`.
+  `pinned` to toggle), `GET /session?session_id=` (session_id resolves via
+  the store: exact id, id prefix, or session title).
 - `src/index.jsx` — the only UI source. Compiled IIFE bundle.
 - `dist/index.js` — committed build artifact; the host serves THIS file,
   not `src/`.
@@ -44,7 +45,16 @@ read-only FastAPI backend.
   read-only against `$HERMES_HOME/skill-stats/`.
 - Table UI: Skill / Category / Loads / % / Last used / Chart / Pin columns;
   pinned skills (★) sort first; ← → paging with a per-page dropdown
-  (10/15/20/30/50/100, default 10) and a group-by-category switcher.
+  (10/15/20/30/50/100, default 10) and a "Group by" radiogroup
+  (Skill | Category). Period selection is a radiogroup (1d-90d); the chart
+  view has a Bar/Line radiogroup.
+- Radiogroups are built on the host Tabs kit — its standard segmented
+  control. Exact contract: `Tabs` takes `defaultValue` and a RENDER-FUNCTION
+  child `(value, setValue) => ...` (a plain element crashes with
+  "e is not a function"); `TabsTrigger` takes an `active` BOOLEAN (not
+  radix state); `TabsList` is a passthrough div (put `role="radiogroup"` +
+  `aria-label` there, `role="radio"` + `aria-checked` on triggers). See the
+  `RadioGroup` helper in `src/index.jsx`.
 - Routing is hash-based (`/skill-stats#/skills/<name>`) via
   `window.location.hash` — no router library.
 - Theme: use SDK components (`Card`, `Badge`, `Button`) and `cn` classes

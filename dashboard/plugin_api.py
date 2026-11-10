@@ -102,7 +102,11 @@ async def get_overview(days: int = 1, profile: str = ""):
 async def get_session(session_id: str = "", days: int = 1, profile: str = ""):
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id is required")
-    return _overview("session", session_id, days, profile)
+    store = _store()
+    sid, _how = store.resolve_session_id(session_id)
+    if not sid:
+        raise HTTPException(status_code=404, detail=f"no session matches {session_id!r}")
+    return _overview("session", sid, days, profile)
 
 
 @router.get("/pins")

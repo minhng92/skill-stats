@@ -42,27 +42,42 @@ system-prompt pointer defers to the next session.
 ## Usage
 
 All statistics views are **period-scoped** (default: last 1 day) with
-`--offset/--limit` paging and an optional group-by-category mode.
+`--offset/--limit` paging and an optional group-by-category mode. Scope rule:
+**global by default**; `--session`/`-s` (an id, or bare inside a session)
+selects session scope.
 
 | Surface | Command | What it shows / does |
 |---|---|---|
-| In-session | `/skill-stats` | **This session's** bordered table (skill, category, loads, %, last used) + top-skill bar/line charts |
+| In-session | `/skill-stats` | **The current session's** bordered table (skill, category, loads, %, last used) + top-skill bar/line charts |
+| In-session | `/skill-stats global` | All-time/global stats (every session mixed) |
+| In-session | `/skill-stats -s <id-or-title>` | Another session's stats (id, short-form id prefix, or session title) |
 | In-session | `/skill-stats --day 7` | Same, for the last 7 days |
-| In-session | `/skill-stats global --offset 10 --limit 10` | Global stats, page 2 |
-| In-session | `/skill-stats --group` | Grouped by skill category (loads, %, latest last-used) |
+| In-session | `/skill-stats --offset 10 --limit 10` | Page 2 |
+| In-session | `/skill-stats -g` | Grouped by skill category (loads, %, latest last-used) |
+| In-session | `/skill-stats -o stats.json` | Save output to a file (JSON when `--json` or `*.json`, raw text otherwise) |
 | In-session | `/skill-stats --json` | Table data + `series` per skill, machine-readable |
-| In-session | `/skill-stats reset` | Reset **this session's** stats |
-| TUI (`hermes --tui`) | `/skill-stats` | **Interactive modal** for the **current session**: ↑/↓ select skill, Enter opens chart, ←/→ toggles bar ↔ line, keys 1-7 switch period (1d 3d 7d 30d 60d 90d), Esc back/close |
+| In-session | `/skill-stats reset` | Reset **this session's** stats (`global` keyword or `--session` to reset something else) |
+| TUI (`hermes --tui`) | `/skill-stats` | **Interactive modal** for the **current session**: ↑/↓ select skill, Enter opens chart, ←/→ toggles bar ↔ line, keys 1-6 switch period (1d 3d 7d 30d 60d 90d), Esc back/close |
 | CLI | `hermes skill-stats` | **Global** table (bare call), period-scoped |
-| CLI | `hermes skill-stats --day 30 -d 7 --offset 0 --limit 20 --group` | Period, paging, group-by-category |
+| CLI | `hermes skill-stats -s <id> --day 30 -of 0 -l 20 -g` | Session scope, period, paging, group-by-category |
 | CLI | `hermes skill-stats --json` | Table data + `series`, machine-readable |
-| CLI | `hermes skill-stats reset` | Reset **global** stats (+ all session files) |
+| CLI | `hermes skill-stats -o /tmp/stats.md` | Save the table as a file |
+| CLI | `hermes skill-stats reset` | Reset **global** stats (+ all session files); `--session <id>` resets one session |
 | CLI | `hermes skill-stats doctor` | Plugin health check |
-| Dashboard | `Skill Stats` tab (after Skills) | Table with Skill / Category / Loads / % / Last used / Chart / Pin columns; ← → paging, per-page dropdown (10-100), 1d-90d period buttons, group-by-category switcher, ★ pin/unpin (pinned skills stay on top) |
+| Dashboard | `Skill Stats` tab (after Skills) | Table with Skill / Category / Loads / % / Last used / Chart / Pin columns; ← → paging, per-page dropdown (10-100), period radiogroup (1d-90d), Skill/Category radiogroup, Bar/Line radiogroup in the chart view, ★ pin/unpin (pinned skills stay on top) |
 
-`hermes skill-stats stats [--scope session --session <ID>]` also works as an
-explicit alias. Periods of 1 or 3 days render chart x-axes **hourly**; longer
-periods are daily (TUI + Dashboard).
+Short forms: `--offset/-of`, `--group/-g`, `--limit/-l`, `--session/-s`,
+`--day/-d`, `--output/-o`.
+
+`--session` accepts an exact session id, a **short-form id prefix**
+(`local-c12c3f0c1d37f66b`), or a session **title**
+(`stageshow-bentora`) — resolved against stored session files and Hermes'
+session registry (read-only). When resolution used a prefix or title, the
+output prints `resolved <query> → <id> (prefix|title)`.
+
+`hermes skill-stats stats [...options]` also works as an explicit alias.
+Periods of 1 or 3 days render chart x-axes **hourly**; longer periods are
+daily (TUI + Dashboard).
 
 Note: in the TUI, the `/skill-stats` widget (interactive modal) takes
 precedence over the plugin's text `/skill-stats`; everywhere else the plugin
@@ -102,7 +117,7 @@ a real TTY):
 skill-stats — global · period: 1d
 total loads (1d): 4 · unique skills: 3
 +---------------+---------------------+-------+--------+------------------+
-| SKILL         | CATEGORY            | LOADS | PCT    | LAST USED        |
+| SKILL         | CATEGORY            | LOADS | %      | LAST USED        |
 +---------------+---------------------+-------+--------+------------------+
 | hermes-agent  | autonomous-ai-agents|     2 | 50.00% | 2026-11-10 16:59 |
 | ub-mode       | software-development|     1 | 25.00% | 2026-11-10 16:49 |

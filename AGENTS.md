@@ -18,9 +18,13 @@ FastAPI (dashboard API tests). Requirements: Python >= 3.11.
   `get_table()`/`group_by_category()`/`format_table()` (period-scoped display),
   `get_series(granularity=)` ("hour" for periods <= 3 days, else "day"),
   `get_pins/set_pins/toggle_pin`, `render_table` (ASCII, PrettyTable-style),
-  `VERSION`.
+  `save_output`, `resolve_session_id` (exact id → id prefix → session title
+  via Hermes' state.db, read-only), `VERSION`.
 - `skill_stats_hooks.py` — counting (only `skill_view` counts; counting in
   `pre_tool_call`, so failed loads still count) + the slash command.
+  Slash scope rule: `/skill-stats` shows the CURRENT session (host-injected
+  `session_id`); `global` keyword = all-time; `--session/-s <id>` selects
+  another session. CLI scope rule is different: bare call = global.
 - `skill_stats_cli.py` — argparse CLI; bare call = global stats.
 - `skill_stats_charts.py` — unicode text charts (bar + cumulative line).
 - `dashboard/` — web tab: FastAPI `plugin_api.py` + React `src/` → `dist/`

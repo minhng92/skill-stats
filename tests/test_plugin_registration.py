@@ -46,7 +46,8 @@ def test_registers_skill_stats_command(ctx):
     (name, handler, kwargs), = ctx.commands
     assert name == "skill-stats"
     assert handler is skill_stats_hooks.on_skill_stats
-    assert kwargs["args_hint"] == "[global] [--json] [--day N] [--offset N] [--limit N] [--group]"
+    assert kwargs["args_hint"] == ("[global] [--session <id>] [--json] [--day N] [--offset N] "
+                                   "[--limit N] [--group] [--output <file>]")
 
 
 def test_registers_skill_stats_cli(ctx):
@@ -54,7 +55,20 @@ def test_registers_skill_stats_cli(ctx):
     assert name == "skill-stats"
     parser = argparse.ArgumentParser()
     setup_fn(parser)
-    assert parser.parse_args([]).scope == "global"  # bare call = global
+    # no --scope anymore: global without --session, session with it
+    assert not hasattr(parser.parse_args([]), "scope")
+    assert parser.parse_args([]).session == ""
+    assert parser.parse_args(["--session", "abc"]).session == "abc"
+    assert parser.parse_args(["-s", "abc"]).session == "abc"
+    assert parser.parse_args([]).day == 1
+    assert parser.parse_args(["--offset", "3"]).offset == 3
+    assert parser.parse_args(["-of", "3"]).offset == 3
+    assert parser.parse_args(["--limit", "5"]).limit == 5
+    assert parser.parse_args(["-l", "5"]).limit == 5
+    assert parser.parse_args(["--group"]).group is True
+    assert parser.parse_args(["-g"]).group is True
+    assert parser.parse_args(["--output", "out.txt"]).output == "out.txt"
+    assert parser.parse_args(["-o", "out.txt"]).output == "out.txt"
     assert parser.parse_args(["reset"]).subcommand == "reset"
     assert parser.parse_args(["doctor"]).subcommand == "doctor"
 

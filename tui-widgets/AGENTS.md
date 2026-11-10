@@ -14,9 +14,9 @@ command there).
   `~/.hermes` — no network, no backend.
 - UI contract: `defineWidgetApp` with `id: 'skill-stats'`, `mode: 'modal'`,
   `init()/reduce()/render()`; keys: ↑/↓ (and j/k) select, Enter/Space opens
-  chart, ←/→ (h/l) toggle bar↔line, 1-7 switch period (1d 3d 7d 30d 60d 90d;
-  default 1d), Esc/q back/close. Keep the help string in sync with any key
-  change.
+  chart, ←/→ (h/l) toggle bar↔line, 1-6 switch period (1d 3d 7d 30d 60d 90d;
+  default 1d; the old key "7" binding was removed as redundant), Esc/q
+  back/close. Keep the help string in sync with any key change.
 - Table columns: name / category (from `<skills>/<category>/<skill>/SKILL.md`,
   blank when none) / loads (period) / pct / sparkline. Chart x-axis is hourly
   for 1d/3d periods, daily beyond (with an axis label line).

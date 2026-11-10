@@ -127,6 +127,42 @@ def test_hourly_buckets_for_short_periods(tmp_path):
     assert store.get_series("pdf", days=1, data_dir=tmp_path, granularity="day")[0]["date"].count("-") == 2
 
 
+def test_resolve_session_id(tmp_path, monkeypatch):
+    sdir = tmp_path / "sessions"
+    sdir.mkdir()
+    (sdir / "local-c12c3f0c1d37f66b28c07eeb39fa643ce2cd557b065369c3f7eb313bc2d71cab.json").write_text("{}")
+    (sdir / "20261110_160607_68b24c.json").write_text("{}")
+    # exact id wins
+    sid, how = store.resolve_session_id("20261110_160607_68b24c", tmp_path)
+    assert (sid, how) == ("20261110_160607_68b24c", "exact")
+    # short-form prefix resolves to the full id
+    sid, how = store.resolve_session_id("local-c12c3f0c1d37f66b", tmp_path)
+    assert how == "prefix" and sid.startswith("local-c12c3f0c1d37f66b")
+    assert len(sid) > len("local-c12c3f0c1d37f66b")
+    # ambiguous prefix -> most recently modified file
+    import os
+    amb = sdir / "local-aaa111.json"
+    amb.write_text("{}")
+    os.utime(amb, (0, 0))  # older than the other one
+    sid, how = store.resolve_session_id("local-", tmp_path)
+    assert how == "prefix" and sid == "local-c12c3f0c1d37f66b28c07eeb39fa643ce2cd557b065369c3f7eb313bc2d71cab"
+    # title lookup via Hermes state.db
+    import sqlite3
+    db = sqlite3.connect(tmp_path / "state.db")
+    db.execute("CREATE TABLE sessions (id TEXT, chat_id TEXT, title TEXT, display_name TEXT, "
+               "last_activity_at INTEGER, started_at INTEGER)")
+    db.execute("INSERT INTO sessions VALUES (?, ?, ?, ?, 99, 1)",
+               ("local-c12c3f0c1d37f66b28c07eeb39fa643ce2cd557b065369c3f7eb313bc2d71cab", None,
+                "stageshow-bentora", None))
+    db.commit(); db.close()
+    monkeypatch.setattr(store, "_hermes_home", lambda: tmp_path)
+    sid, how = store.resolve_session_id("stageshow-bentora", tmp_path)
+    assert how == "title" and sid.startswith("local-c12c3f0c1d37f66b")
+    # nothing matches -> empty + "none"
+    assert store.resolve_session_id("nope-nothing", tmp_path) == ("", "none")
+    assert store.resolve_session_id("", tmp_path) == ("", "none")
+
+
 def test_pins_roundtrip(tmp_path):
     assert store.get_pins(tmp_path) == []
     store.set_pins(["b", "a", "b", " "], tmp_path)
