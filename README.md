@@ -16,12 +16,13 @@ line charts in all three surfaces.
 
 ## Install
 
-Plugins are opt-in. Symlink/copy this folder into your profile's plugins dir,
-then enable:
+Plugins are opt-in. Get a copy of this folder into your profile's plugins
+directory, then enable:
 
 ```bash
+# from a clone/download of this repo; HERMES_HOME defaults to ~/.hermes
 mkdir -p "$HERMES_HOME/plugins"
-ln -s /data/kyzlab/plugins/skill-stats "$HERMES_HOME/plugins/skill-stats"
+cp -r skill-stats "$HERMES_HOME/plugins/"        # or: ln -s "$(pwd)/skill-stats" "$HERMES_HOME/plugins/skill-stats"
 hermes plugins enable skill-stats
 hermes plugins doctor skill-stats
 ```
@@ -30,7 +31,7 @@ For the interactive TUI widget, also copy the widget (per profile):
 
 ```bash
 mkdir -p "$HERMES_HOME/tui-widgets"
-cp /data/kyzlab/plugins/skill-stats/tui-widgets/skill-stats.mjs "$HERMES_HOME/tui-widgets/"
+cp "$HERMES_HOME/plugins/skill-stats/tui-widgets/skill-stats.mjs" "$HERMES_HOME/tui-widgets/"
 ```
 
 Plugins are installed per profile: use `hermes -p <profile> plugins enable skill-stats`
