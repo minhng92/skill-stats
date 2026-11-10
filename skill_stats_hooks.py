@@ -10,10 +10,15 @@ counted verbatim as given.
 from __future__ import annotations
 
 import json
+import logging
+import shutil
+from pathlib import Path
 from typing import Any, Optional
 
 from . import skill_stats_charts as _charts
 from . import skill_stats_store as _store
+
+logger = logging.getLogger(__name__)
 
 _COUNTED_TOOLS = {"skill_view"}
 
@@ -35,6 +40,35 @@ def on_pre_tool_call(tool_name: str = "", args: Any = None, session_id: str = ""
     if name:
         _store.record_usage(name, session_id=str(session_id or ""))
     return None  # never block
+
+
+def sync_tui_widget() -> Optional[str]:
+    """Best-effort install of the TUI widget into ``$HERMES_HOME/tui-widgets/``.
+
+    The TUI only scans that directory for user widgets, so the plugin ships
+    its widget by copying the file there at registration time (which runs
+    before the TUI builds its layout). Idempotent: a same-size, same-mtime
+    copy is skipped, so this is a no-op after the first run. Returns a short
+    note describing what happened, or ``None`` when nothing needed doing.
+    Never raises: callers degrade silently to text-only mode.
+    """
+    src = Path(__file__).resolve().parent / "tui-widgets" / "skill-stats.mjs"
+    if not src.is_file():
+        return None
+    try:
+        target = _store._hermes_home() / "tui-widgets"
+        dest = target / "skill-stats.mjs"
+        if dest.is_file() and dest.stat().st_size == src.stat().st_size \
+                and dest.stat().st_mtime_ns == src.stat().st_mtime_ns:
+            return None  # already current
+        target.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dest)
+        shutil.copystat(src, dest)  # keep source mtime so future checks stay cheap
+        logger.info("skill-stats: installed TUI widget at %s", dest)
+        return str(dest)
+    except Exception as e:
+        logger.debug("skill-stats: TUI widget sync skipped: %s", e)
+        return None
 
 
 def on_session_start(session_id: str = "", **_: Any) -> None:

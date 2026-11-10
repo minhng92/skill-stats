@@ -1,7 +1,7 @@
 {
   "name": "hermes-skill-stats",
   "private": true,
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Build tooling for Skill Stats dashboard UI. Runtime React and SDK components are supplied by the host.",
   "scripts": {
     "build": "esbuild dashboard/src/index.jsx --bundle --format=iife --target=es2020 --jsx-factory=React.createElement --jsx-fragment=React.Fragment --outfile=dashboard/dist/index.js",

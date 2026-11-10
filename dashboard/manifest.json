@@ -3,7 +3,7 @@
   "label": "Skill Stats",
   "description": "Per-skill usage counters with daily bar and cumulative line charts (global + per-session)",
   "icon": "BarChart3",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "tab": {
     "path": "/skill-stats",
     "position": "after:skills"

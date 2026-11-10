@@ -17,6 +17,13 @@ HOOKS = ("pre_tool_call", "on_session_start", "on_session_end")
 
 def register(ctx) -> None:
     """Plugin entry point — called by the Hermes plugin loader."""
+    # Ship the TUI widget into $HERMES_HOME/tui-widgets/ so a single
+    # `hermes plugins install`/enable gives the full feature set. Best-effort:
+    # a failure degrades to text-only /skill-stats, never breaks the host.
+    try:
+        skill_stats_hooks.sync_tui_widget()
+    except Exception:  # pragma: no cover - sync_tui_widget already guards
+        pass
     ctx.register_hook("pre_tool_call", skill_stats_hooks.on_pre_tool_call)
     ctx.register_hook("on_session_start", skill_stats_hooks.on_session_start)
     ctx.register_hook("on_session_end", skill_stats_hooks.on_session_end)

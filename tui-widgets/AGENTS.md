@@ -7,8 +7,11 @@ command there).
 ## Rules
 - Single plain Node ESM file, `node:` imports only (fs/os/path). No npm
   deps, no build step, not imported by the Python package.
-- Not auto-installed: users copy it to `$HERMES_HOME/tui-widgets/` (see
-  README Install), then `/widgets-reload`. It runs in the TUI widget host.
+- Auto-installed: `skill_stats_hooks.sync_tui_widget()` (called from
+  `register()`) copies this file to `$HERMES_HOME/tui-widgets/` on every
+  Hermes start; skip when size+mtime match, never raise into the host. Edit
+  here, and the next session (or `/widgets-reload`) picks it up — no manual
+  copy step.
 - Data: read the **newest** file in `$HERMES_HOME/skill-stats/sessions/`
   (the current session; fallback `global.json`) — `HERMES_HOME` env, fallback
   `~/.hermes` — no network, no backend.

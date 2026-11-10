@@ -21,7 +21,10 @@ FastAPI (dashboard API tests). Requirements: Python >= 3.11.
   `save_output`, `resolve_session_id` (exact id → id prefix → session title
   via Hermes' state.db, read-only), `VERSION`.
 - `skill_stats_hooks.py` — counting (only `skill_view` counts; counting in
-  `pre_tool_call`, so failed loads still count) + the slash command.
+  `pre_tool_call`, so failed loads still count), the slash command, and
+  `sync_tui_widget()` (register-time copy of the TUI widget into
+  `$HERMES_HOME/tui-widgets/`, idempotent by size+mtime, never raises — this
+  is the one sanctioned register-time side effect).
   Slash scope rule: `/skill-stats` shows the CURRENT session (host-injected
   `session_id`); `global` keyword = all-time; `--session/-s <id>` selects
   another session. CLI scope rule is different: bare call = global.

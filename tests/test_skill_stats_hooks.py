@@ -18,6 +18,23 @@ def test_pre_tool_call_counts_only_skill_view(tmp_path, monkeypatch):
     assert g["total_loads"] == 1 and g["skills"][0]["skill"] == "pdf"
 
 
+def test_sync_tui_widget(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "_hermes_home", lambda: tmp_path)
+    # first call copies the shipped widget into the tmp home
+    r = hooks.sync_tui_widget()
+    dest = tmp_path / "tui-widgets" / "skill-stats.mjs"
+    assert r is not None and dest.is_file()
+    src = Path(hooks.__file__).resolve().parent / "tui-widgets" / "skill-stats.mjs"
+    assert dest.read_bytes() == src.read_bytes()
+    assert dest.stat().st_mtime_ns == src.stat().st_mtime_ns
+    # second call is a no-op (already current)
+    assert hooks.sync_tui_widget() is None
+    # a changed target file is re-synced
+    dest.write_text("// stale\n")
+    assert hooks.sync_tui_widget() is not None
+    assert dest.read_bytes() == src.read_bytes()
+
+
 def test_slash_scope_rules(tmp_path, monkeypatch):
     monkeypatch.setattr(store, "_data_dir", lambda: tmp_path)
     store.record_usage("pdf", "sess-9", tmp_path)

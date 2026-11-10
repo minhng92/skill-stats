@@ -1,149 +1,168 @@
 # Skill Stats for Hermes Agent
 
-Per-skill usage counters for Hermes Agent, with time-series daily buckets and
-three chart surfaces: terminal text charts, a Dashboard tab, and an
-interactive TUI widget.
+Skill Stats counts every skill load in Hermes Agent and turns the counts into
+period-scoped statistics you can read from four places: the chat session, the
+TUI, the terminal, and the web Dashboard.
 
-Every `skill_view` load increments a counter **and** appends a timestamped
-event. The event log (capped at 1000/skill) feeds daily bar and cumulative
-line charts in all three surfaces.
-
-> Plugin only, no Hermes core changes. Layout follows the official plugins:
-> thin `__init__.py` (registration only), `skill_stats_store.py` (persistence
-> + time series), `skill_stats_hooks.py` (counting + slash command),
-> `skill_stats_cli.py` (CLI), `skill_stats_charts.py` (text charts),
-> `dashboard/` (web tab), `tui-widgets/` (TUI modal).
+One rule drives everything: the plugin counts a skill every time Hermes loads
+it, records when it happened, and reports the numbers with period filters,
+paging, and grouping. No configuration is required after installation.
 
 ## Install
 
-Plugins are opt-in. Get a copy of this folder into your profile's plugins
-directory, then enable:
+Copy the plugin folder into your profile's plugins directory and enable it.
+`HERMES_HOME` defaults to `~/.hermes`. That is the whole install: the plugin
+places its own TUI widget into `$HERMES_HOME/tui-widgets/` at startup, so
+`hermes plugins install` or `enable` delivers the full feature set without
+extra steps.
 
 ```bash
-# from a clone/download of this repo; HERMES_HOME defaults to ~/.hermes
 mkdir -p "$HERMES_HOME/plugins"
-cp -r skill-stats "$HERMES_HOME/plugins/"        # or: ln -s "$(pwd)/skill-stats" "$HERMES_HOME/plugins/skill-stats"
+cp -r skill-stats "$HERMES_HOME/plugins/"
+# or, so that updates flow through without re-copying:
+# ln -s "$(pwd)/skill-stats" "$HERMES_HOME/plugins/skill-stats"
+
 hermes plugins enable skill-stats
 hermes plugins doctor skill-stats
 ```
 
-For the interactive TUI widget, also copy the widget (per profile):
+`doctor` reports the widget as `current`, `stale` or `missing` under
+`tui_widget`; a missing or stale file is re-synced on the next Hermes start.
 
-```bash
-mkdir -p "$HERMES_HOME/tui-widgets"
-cp "$HERMES_HOME/plugins/skill-stats/tui-widgets/skill-stats.mjs" "$HERMES_HOME/tui-widgets/"
+Two things to keep in mind:
+
+1. Plugins are installed per profile. For another profile, repeat the copies
+   and run `hermes -p <profile> plugins enable skill-stats`.
+2. Hooks register when a session starts, so the command becomes available in
+   a new session after enabling.
+
+## Use it in a chat session: /skill-stats
+
+Type `/skill-stats` and the current session's numbers appear immediately:
+
+```
+skill-stats — session · period: 1d
+total loads (1d): 11 · unique skills: 3
++---------------------------+----------------------+-------+--------+------------------+
+| SKILL                     | CATEGORY             | LOADS | %      | LAST USED        |
++---------------------------+----------------------+-------+--------+------------------+
+| hermes-plugin-development |                      |     5 | 45.45% | 2026-11-10 22:41 |
+| llm-wiki                  | research             |     5 | 45.45% | 2026-11-10 22:42 |
+| pwt-browser-verification  | software-development |     1 |  9.09% | 2026-11-10 16:42 |
++---------------------------+----------------------+-------+--------+------------------+
 ```
 
-Plugins are installed per profile: use `hermes -p <profile> plugins enable skill-stats`
-for another profile (and copy the widget into that profile's `tui-widgets/`).
-Restart Hermes (new session) after enabling — hooks register at startup; the
-system-prompt pointer defers to the next session.
+The command reads the session you typed it in. Add options to change the
+period, page the rows, group them, or look at other sessions:
 
-## Usage
+| Command | Result |
+|---|---|
+| `/skill-stats` | This session's statistics |
+| `/skill-stats global` | All sessions combined |
+| `/skill-stats -s stageshow-bentora` | A specific session, by title |
+| `/skill-stats -s local-c12c3f0c1d37f66b` | A session by short id prefix, or full id |
+| `/skill-stats --day 7` | The last 7 days (`--day 0` means all time) |
+| `/skill-stats --offset 10 -l 10` | Rows 11 to 20 (10 rows per page) |
+| `/skill-stats -g` | Rows grouped by category |
+| `/skill-stats -o stats.json` | Write the result to a file |
+| `/skill-stats --json` | Machine-readable output |
+| `/skill-stats reset` | Clear this session's counters |
+| `/skill-stats reset global` | Clear all counters |
 
-All statistics views are **period-scoped** (default: last 1 day) with
-`--offset/--limit` paging and an optional group-by-category mode. Scope rule:
-**global by default**; `--session`/`-s` (an id, or bare inside a session)
-selects session scope.
+`reset` follows the same scope as the display: it clears the current session
+unless you add `global` or name a session with `--session`.
 
-| Surface | Command | What it shows / does |
+## Use it in the TUI: an interactive modal
+
+In `hermes --tui`, `/skill-stats` opens a modal bound to the current session:
+
+```
+Up / Down    browse skills
+Enter        open a skill's chart
+Left / Right switch bar chart and cumulative line
+1 to 6       period: 1d, 3d, 7d, 30d, 60d, 90d
+Esc / q      close
+```
+
+The chart x-axis follows the period: 1d and 3d draw hourly bars, longer
+periods draw daily ones. The same rule applies on the Dashboard.
+
+## Use it from the terminal
+
+The CLI shows global statistics by default, which makes it suitable for
+scheduled checks and pipes:
+
+```bash
+hermes skill-stats                       # global, last 1 day
+hermes skill-stats --day 30 -l 20        # last 30 days, 20 rows per page
+hermes skill-stats -g                    # grouped by category
+hermes skill-stats -s stageshow-bentora  # one session
+hermes skill-stats --json                # machine-readable
+hermes skill-stats -o report.md          # write to a file
+hermes skill-stats reset                 # clear global counters
+hermes skill-stats doctor                # plugin health check
+```
+
+Every option has a short form: `--day/-d`, `--offset/-of`, `--limit/-l`,
+`--group/-g`, `--session/-s`, `--output/-o`.
+
+## Use it on the Dashboard
+
+The Skill Stats tab sits after Skills in the Hermes web Dashboard. All
+controls respond immediately:
+
+- Pin the skills you monitor often. Pinned rows stay at the top of the table.
+- Pick a period from 1d to 90d and switch between Skill and Category views.
+- Page with the arrow buttons and choose 10 to 100 rows per page.
+- Open a skill's chart and switch between bar and cumulative line.
+
+## Choosing a scope
+
+Scope works the same way on the slash command and the CLI, with one
+difference in the default:
+
+| Surface | Default | Select another session |
 |---|---|---|
-| In-session | `/skill-stats` | **The current session's** bordered table (skill, category, loads, %, last used) + top-skill bar/line charts |
-| In-session | `/skill-stats global` | All-time/global stats (every session mixed) |
-| In-session | `/skill-stats -s <id-or-title>` | Another session's stats (id, short-form id prefix, or session title) |
-| In-session | `/skill-stats --day 7` | Same, for the last 7 days |
-| In-session | `/skill-stats --offset 10 --limit 10` | Page 2 |
-| In-session | `/skill-stats -g` | Grouped by skill category (loads, %, latest last-used) |
-| In-session | `/skill-stats -o stats.json` | Save output to a file (JSON when `--json` or `*.json`, raw text otherwise) |
-| In-session | `/skill-stats --json` | Table data + `series` per skill, machine-readable |
-| In-session | `/skill-stats reset` | Reset **this session's** stats (`global` keyword or `--session` to reset something else) |
-| TUI (`hermes --tui`) | `/skill-stats` | **Interactive modal** for the **current session**: ↑/↓ select skill, Enter opens chart, ←/→ toggles bar ↔ line, keys 1-6 switch period (1d 3d 7d 30d 60d 90d), Esc back/close |
-| CLI | `hermes skill-stats` | **Global** table (bare call), period-scoped |
-| CLI | `hermes skill-stats -s <id> --day 30 -of 0 -l 20 -g` | Session scope, period, paging, group-by-category |
-| CLI | `hermes skill-stats --json` | Table data + `series`, machine-readable |
-| CLI | `hermes skill-stats -o /tmp/stats.md` | Save the table as a file |
-| CLI | `hermes skill-stats reset` | Reset **global** stats (+ all session files); `--session <id>` resets one session |
-| CLI | `hermes skill-stats doctor` | Plugin health check |
-| Dashboard | `Skill Stats` tab (after Skills) | Table with Skill / Category / Loads / % / Last used / Chart / Pin columns; ← → paging, per-page dropdown (10-100), period radiogroup (1d-90d), Skill/Category radiogroup, Bar/Line radiogroup in the chart view, ★ pin/unpin (pinned skills stay on top) |
+| Slash `/skill-stats` | The current session | `global` keyword, or `--session <id-or-title>` |
+| CLI `hermes skill-stats` | Global | `--session <id-or-title>` |
 
-Short forms: `--offset/-of`, `--group/-g`, `--limit/-l`, `--session/-s`,
-`--day/-d`, `--output/-o`.
+Session references are flexible. An exact id works, and so do a short-form id
+prefix (`local-c12c3f0c1d37f66b`) and a session title
+(`stageshow-bentora`). When a reference is resolved through a prefix or a
+title, the output prints the resolved id so you can confirm the match.
 
-`--session` accepts an exact session id, a **short-form id prefix**
-(`local-c12c3f0c1d37f66b`), or a session **title**
-(`stageshow-bentora`) — resolved against stored session files and Hermes'
-session registry (read-only). When resolution used a prefix or title, the
-output prints `resolved <query> → <id> (prefix|title)`.
+## Reading the table
 
-`hermes skill-stats stats [...options]` also works as an explicit alias.
-Periods of 1 or 3 days render chart x-axes **hourly**; longer periods are
-daily (TUI + Dashboard).
+- `LOADS` counts loads within the selected period.
+- `%` is the skill's share of that period's total loads.
+- `CATEGORY` comes from your skills folder layout
+  (`skills/<category>/<skill>/`). A blank cell means the skill has no
+  category folder, which is normal for top-level and plugin-provided skills.
+- `LAST USED` is the most recent load timestamp within the period.
 
-Note: in the TUI, the `/skill-stats` widget (interactive modal) takes
-precedence over the plugin's text `/skill-stats`; everywhere else the plugin
-command applies. The widget reads the **newest session file** under
-`$HERMES_HOME/skill-stats/sessions/` (fallback: `global.json`) directly — no
-backend needed.
+Only loading a skill counts as a use. Browsing the skill list, and creating
+or editing skills, do not count. A load that fails still counts, because the
+attempt happened.
 
-## Data
+## Where the data lives
 
 ```
-$HERMES_HOME/skill-stats/global.json
-$HERMES_HOME/skill-stats/sessions/<session_id>.json
-$HERMES_HOME/skill-stats/pins.json          # dashboard pin list
+$HERMES_HOME/skill-stats/global.json        # all-time totals
+$HERMES_HOME/skill-stats/sessions/*.json    # one file per session
+$HERMES_HOME/skill-stats/pins.json          # your dashboard pins
 ```
 
-Each stats file: `{"skills": {"<name>": {"loads": N, "last_used": <epoch>, "events": [<epoch>, ...]}}, "total_loads": N, "updated_at": <epoch>}`.
-Override the data dir with `SKILL_STATS_DIR=/absolute/path` (legacy
-`SKILL_ANALYTICS_DIR` still honored). Charts show recorded events only, never
-fabricated history.
+Charts are drawn from recorded events only; the plugin never fabricates
+history. Set `SKILL_STATS_DIR=/absolute/path` to store the data elsewhere.
 
-**Categories** come from the profile's skills directory layout:
-`<skills>/<category>/<skill>/SKILL.md` → the skill belongs to `<category>`;
-top-level `<skills>/<skill>/SKILL.md` → no category (blank). Plugin-provided
-skills (namespaced names) have no category folder and show blank.
+## Troubleshooting
 
-**Percentage** is the skill's share of loads within the selected period.
+| Symptom | Fix |
+|---|---|
+| `/skill-stats` is unknown | Enable the plugin, then start a new session. |
+| All numbers are 0 | Run `hermes skill-stats doctor`. Skills only count when Hermes loads them. |
+| The TUI has no widget | Run `hermes skill-stats doctor` and check `tui_widget`; the file re-syncs on the next Hermes start. |
+| The wrong session is shown | Try the session title, or the short id prefix, with `--session`. |
+| The Dashboard tab is missing | Enable the plugin, then reload the Dashboard page. |
 
-**Pins** (`pins.json`) order the Dashboard table: pinned skills stay on top
-(sorted by loads among themselves) for easy monitoring.
-
-## Stats output (0.9.0)
-
-Terminal / slash / CLI all render the same bordered table (headers bolded on
-a real TTY):
-
-```
-skill-stats — global · period: 1d
-total loads (1d): 4 · unique skills: 3
-+---------------+---------------------+-------+--------+------------------+
-| SKILL         | CATEGORY            | LOADS | %      | LAST USED        |
-+---------------+---------------------+-------+--------+------------------+
-| hermes-agent  | autonomous-ai-agents|     2 | 50.00% | 2026-11-10 16:59 |
-| ub-mode       | software-development|     1 | 25.00% | 2026-11-10 16:49 |
-| superpowers:x |                     |     1 | 25.00% | 2026-11-10 16:40 |
-+---------------+---------------------+-------+--------+------------------+
-```
-
-- `LOADS` — loads within the selected period (`--day`, default 1; `0` = all time).
-- `PCT` — share of the period's total loads.
-- `CATEGORY` — blank when the skill has no category folder.
-- `--group` replaces the skill rows with per-category rows (loads, %, latest
-  last-used). `--offset/--limit` page the rows (default `0`/`10`).
-
-## What counts as a "use"
-
-Only `skill_view` (loading a skill's instructions). `skills_list` (browsing) and
-`skill_manage` (creating/editing skills) do not count. Counting happens before
-execution, so a failed `skill_view` still counts as an attempted use. Unknown or
-namespaced names (e.g. `superpowers:brainstorming`) are counted verbatim.
-
-## Tests
-
-```bash
-python3 -m pytest -q
-```
-
-Stdlib-only (+ FastAPI for the dashboard API tests); no hermes-agent checkout
-needed on `PYTHONPATH`. Widget logic is covered by `node --check` plus a
-stub-SDK harness (see git history / issue notes).
+MIT licensed. Version 0.9.0.

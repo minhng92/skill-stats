@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 from . import skill_stats_store as _store
@@ -104,11 +105,16 @@ def handle_cli(args: Any) -> int:
         print(f"skill-stats: reset {scope} stats.")
         return 0
     if sub == "doctor":
+        widget = _store._hermes_home() / "tui-widgets" / "skill-stats.mjs"
+        shipped = Path(__file__).resolve().parent / "tui-widgets" / "skill-stats.mjs"
+        widget_state = "missing" if not widget.is_file() else \
+            ("current" if widget.read_bytes() == shipped.read_bytes() else "stale")
         checks = {
             "plugin": {"name": "skill-stats", "version": _store.VERSION},
             "data_dir": str(_store._data_dir()),
             "global_path": str(_store._global_path()),
             "global_stats": _store.get_stats("global"),
+            "tui_widget": f"{widget_state} ({widget})",
         }
         if getattr(args, "json", False):
             print(json.dumps(checks, indent=2))
