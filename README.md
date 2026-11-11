@@ -177,4 +177,4 @@ What this plugin touches, in full:
 - No network calls. No telemetry or usage reporting. No shell commands. No credentials are read, stored, or requested.
 - Runs entirely inside the profile you install it in; remove the `skill-stats/` folder under `$HERMES_HOME/skill-stats/` to delete its data.
 
-MIT licensed. Version 0.9.1.
+MIT licensed. Version 1.0.0.

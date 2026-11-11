@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
 
-VERSION = "0.9.1"
+VERSION = "1.0.0"
 
 MAX_EVENTS_PER_SKILL = 1000
 
