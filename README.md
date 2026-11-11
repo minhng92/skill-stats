@@ -168,4 +168,13 @@ Charts are drawn from recorded events only; the plugin never fabricates history.
 | The wrong session is shown | Try the session title, or the short id prefix, with `--session`. |
 | The Dashboard tab is missing | Enable the plugin, then reload the Dashboard page. |
 
-MIT licensed. Version 0.9.0.
+## Disclosure
+
+What this plugin touches, in full:
+
+- Writes statistics JSON under `$HERMES_HOME/skill-stats/` (its own data) and, once at startup, copies its TUI widget file into `$HERMES_HOME/tui-widgets/` so the interactive modal works without a manual step.
+- Reads Hermes' session registry (`$HERMES_HOME/state.db`, read-only SQLite) to resolve a `--session` reference given as a title or short id. Session titles only; no message content is read.
+- No network calls. No telemetry or usage reporting. No shell commands. No credentials are read, stored, or requested.
+- Runs entirely inside the profile you install it in; remove the `skill-stats/` folder under `$HERMES_HOME/skill-stats/` to delete its data.
+
+MIT licensed. Version 0.9.1.

@@ -3,7 +3,7 @@ label: Skill Stats
 kind: standalone
 version: 0.9.1
 author: kyzlab
-homepage: https://github.com/NousResearch/hermes-official-plugins
+homepage: https://github.com/minhng92/skill-stats
 description: >
   Per-skill usage counters for Hermes Agent: increments on every
   skill_view load, with /skill-stats for this session and
