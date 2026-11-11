@@ -8,6 +8,12 @@ Skill Stats counts every skill load in Hermes Agent and turns the counts into pe
 
 One rule drives everything: the plugin counts a skill every time Hermes loads it, records when it happened, and reports the numbers with period filters, paging, and grouping. No configuration is required after installation.
 
+<p align="center">
+  <a href="assets/introduction.gif">
+    <img src="assets/introduction.gif" alt="skill-stats introduction" width="960" />
+  </a>
+</p>
+
 ## Install
 
 **Install straight from GitHub:**
@@ -41,12 +47,6 @@ Two things to keep in mind:
 
 1. Plugins are installed per profile. For another profile, install or enable there too: `hermes -p <profile> plugins enable skill-stats`.
 2. Hooks register when a session starts, so the command becomes available in a new session after enabling.
-
-<p align="center">
-  <a href="assets/skill-usage-chart.jpg">
-    <img src="assets/skill-usage-chart.jpg" alt="Skill usage chart" width="960" />
-  </a>
-</p>
 
 ## Use it in a chat session: /skill-stats
 
